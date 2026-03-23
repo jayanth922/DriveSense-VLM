@@ -1,0 +1,62 @@
+# =============================================================================
+# DriveSense-VLM Inference Configuration
+# =============================================================================
+# LoRA merge, AWQ quantization, TensorRT ViT compilation, vLLM serving, demo.
+# Phases 3a–3d and 4a read from this file.
+# All HPC-specific paths assume $HOME/DriveSense-VLM/ as working directory.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Phase 3a: LoRA Merge
+# -----------------------------------------------------------------------------
+merge:
+  output_dir: "outputs/merged_model"
+  safe_serialization: true            # Save as .safetensors (not legacy .bin)
+
+# -----------------------------------------------------------------------------
+# Phase 3b: AWQ Quantization (LLM decoder only, ViT stays fp16)
+# -----------------------------------------------------------------------------
+quantization:
+  output_dir: "outputs/quantized_model"
+  method: "awq"
+  bits: 4
+  group_size: 128
+  # Number of calibration samples for AWQ weight search.
+  # More samples = better accuracy, longer calibration time.
+  calibration_samples: 128
+
+# -----------------------------------------------------------------------------
+# Phase 3c: TensorRT Vision Encoder Compilation
+# -----------------------------------------------------------------------------
+tensorrt:
+  output_dir: "outputs/tensorrt"
+  onnx_path: "outputs/tensorrt/vit.onnx"
+  engine_path: "outputs/tensorrt/vit.engine"
+  # [batch, channels, height, width] — must match model vision.image_resolution
+  input_shape: [1, 3, 448, 672]
+  precision: "fp16"                   # ViT in fp16 for accuracy preservation
+  max_workspace_size_gb: 4
+  # Fixed batch size for deterministic latency — no dynamic axes
+  dynamic_batch: false
+
+# -----------------------------------------------------------------------------
+# Phase 3d: vLLM Production Serving
+# -----------------------------------------------------------------------------
+vllm:
+  model_path: "outputs/quantized_model"
+  tensor_parallel_size: 1             # Single GPU serving
+  gpu_memory_utilization: 0.85        # Reserve 15% GPU memory for overhead
+  max_model_len: 2048
+  port: 8000
+  host: "0.0.0.0"                     # Listen on all interfaces for HPC port forwarding
+
+# -----------------------------------------------------------------------------
+# Phase 4a: Gradio Demo (HuggingFace Spaces — Free T4 GPU)
+# -----------------------------------------------------------------------------
+demo:
+  model_path: "outputs/quantized_model"
+  device: "auto"                      # auto-detect: cuda > mps > cpu
+  share: false                        # HF Spaces handles public access; don't use ngrok
+  server_port: 7860
+  max_image_size: [672, 448]          # [width, height] — resize inputs to this
+  example_images_dir: "demo/examples"

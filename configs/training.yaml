@@ -1,0 +1,65 @@
+# =============================================================================
+# DriveSense-VLM Training Configuration
+# =============================================================================
+# SFT hyperparameters, hardware settings, checkpointing, and W&B config.
+# Phase 2a (SFT Training) reads from this file.
+# All values tuned for single A100 80GB on SJSU HPC.
+# =============================================================================
+
+training:
+  output_dir: "outputs/training"
+
+  # --- Epochs & Batch Size ---
+  num_epochs: 5
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  # Effective batch size = per_device_train_batch_size * gradient_accumulation_steps
+  # = 4 * 4 = 16 examples per optimizer step
+  gradient_accumulation_steps: 4
+
+  # --- Optimizer ---
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.05                  # 5% of total steps for linear warmup
+  lr_scheduler_type: "cosine"
+
+  # --- Sequence Length ---
+  # 2048 accommodates image tokens (~1280 max) + prompt + structured JSON response
+  max_seq_length: 2048
+
+  # --- Precision & Memory Efficiency ---
+  bf16: true                          # bfloat16 on A100/H100 (no loss scaling needed)
+  gradient_checkpointing: true        # Trade compute for memory — needed for 2B + LoRA
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+  # --- Checkpointing ---
+  save_strategy: "epoch"              # Save checkpoint after each epoch
+  save_total_limit: 3                 # Keep only the 3 most recent checkpoints
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+
+  # --- Logging & Evaluation ---
+  logging_steps: 10                   # Log training metrics every 10 steps
+  eval_strategy: "epoch"             # Run validation at end of each epoch
+  report_to: "wandb"
+
+# -----------------------------------------------------------------------------
+# Weights & Biases Configuration
+# -----------------------------------------------------------------------------
+wandb:
+  project: "drivesense-vlm"
+  entity: null                        # Set to your W&B username or team name
+  tags:
+    - "qwen3-vl-2b"
+    - "lora-sft"
+    - "av-perception"
+    - "rare-hazard"
+  notes: "LoRA SFT on Qwen3-VL-2B for rare hazard detection (nuScenes + DADA-2000)"
+
+# -----------------------------------------------------------------------------
+# Early Stopping
+# -----------------------------------------------------------------------------
+early_stopping:
+  patience: 2                         # Stop after 2 epochs without improvement
+  threshold: 0.001                    # Minimum delta to count as improvement

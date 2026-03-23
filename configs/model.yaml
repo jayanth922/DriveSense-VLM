@@ -1,0 +1,54 @@
+# =============================================================================
+# DriveSense-VLM Model Configuration
+# =============================================================================
+# Base model, LoRA adapter, post-training quantization, and vision settings.
+# Phase 2a (SFT Training) and Phase 3b (AWQ) read from this file.
+# NEVER hardcode these values in source code — always load via utils/config.py.
+# =============================================================================
+
+model:
+  name: "Qwen/Qwen3-VL-2B-Instruct"
+  revision: "main"
+  torch_dtype: "bfloat16"
+  # Flash Attention 2 is required on HPC (A100/H100 support bf16 + FA2).
+  # Fallback: "sdpa" (scaled dot-product attention) if flash_attn not installed.
+  attn_implementation: "flash_attention_2"
+
+# -----------------------------------------------------------------------------
+# LoRA Configuration (applied during Phase 2a SFT)
+# -----------------------------------------------------------------------------
+lora:
+  rank: 32
+  alpha: 64           # alpha / rank = 2.0 — standard scaling for rank-32
+  dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "up_proj"
+    - "down_proj"
+  task_type: "CAUSAL_LM"
+  bias: "none"        # Do not train bias terms — reduces parameter count
+
+# -----------------------------------------------------------------------------
+# Quantization (applied post-training in Phase 3b — HPC only)
+# -----------------------------------------------------------------------------
+quantization:
+  method: "awq"
+  bits: 4
+  group_size: 128     # AWQ group size — smaller = more accurate, slower
+  zero_point: true
+  target: "llm_only"  # Quantize LLM decoder only; keep ViT in fp16
+
+# -----------------------------------------------------------------------------
+# Vision / Image Processing
+# -----------------------------------------------------------------------------
+vision:
+  # Fixed 16:9 dashcam aspect ratio — matches nuScenes and DADA-2000 cameras.
+  # Qwen3-VL dynamic resolution uses patch counts, not raw pixel sizes.
+  image_resolution: [672, 448]   # [width, height]
+  # Patch token counts for Qwen3-VL processor (each patch = 28×28 pixels).
+  # min_pixels / max_pixels control how many visual tokens the image uses.
+  min_pixels: 256
+  max_pixels: 1280

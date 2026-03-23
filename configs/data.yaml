@@ -1,0 +1,77 @@
+# =============================================================================
+# DriveSense-VLM Data Configuration
+# =============================================================================
+# Dataset paths, split ratios, rarity filtering thresholds, annotation settings.
+# Phase 1a (nuScenes), 1b (DADA-2000), and 1c (Annotation) read from this file.
+# Paths use ${VAR:default} syntax — expanded by utils/config.py at load time.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Dataset Paths
+# Override on HPC by setting the HPC_DATA_ROOT environment variable:
+#   export HPC_DATA_ROOT=/scratch/$USER/data
+# -----------------------------------------------------------------------------
+paths:
+  nuscenes_root: "${HPC_DATA_ROOT:~/data}/nuscenes"
+  dada2000_root: "${HPC_DATA_ROOT:~/data}/dada2000"
+  output_dir: "outputs/data"
+  cache_dir: ".cache/drivesense"
+
+# -----------------------------------------------------------------------------
+# Dataset Split
+# -----------------------------------------------------------------------------
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# nuScenes — Rarity Scoring and Frame Filtering (Phase 1a)
+# -----------------------------------------------------------------------------
+nuscenes:
+  # Use "v1.0-mini" for local development (~4GB), "v1.0-trainval" on HPC (~60GB).
+  version: "v1.0-trainval"
+  cameras:
+    - "CAM_FRONT"   # Dashcam-perspective — primary modality for hazard detection
+  rarity:
+    # Composite rarity score = sum of matching criteria below (max = 4).
+    # A frame must score >= min_rarity_score to be included.
+    proximity_threshold_m: 5.0          # +1 if any agent within 5m of ego path
+    occlusion_min_visibility: 0         # Occlusion: include agents at 0% visibility
+    occlusion_max_visibility: 40        # up to 40% visibility (+1 if any such agent)
+    min_agents_for_density: 15          # +1 if scene has >=15 annotated agents
+    adverse_weather_keywords:           # +1 if scene description contains any keyword
+      - "rain"
+      - "night"
+      - "fog"
+      - "storm"
+    min_rarity_score: 3                 # Minimum composite score (0–4) to include frame
+
+# -----------------------------------------------------------------------------
+# DADA-2000 — Accident Frame Extraction (Phase 1b)
+# -----------------------------------------------------------------------------
+dada2000:
+  frame_extraction:
+    method: "critical_moment"           # Extract frame at annotated accident timestamp
+    additional_context_frames: 2        # Also extract 2 frames before critical moment
+  max_frames: 200                       # Cap at 200 frames total from DADA-2000
+
+# -----------------------------------------------------------------------------
+# Annotation — LLM Counterfactual Generation (Phase 1c)
+# -----------------------------------------------------------------------------
+annotation:
+  llm_provider: "anthropic"            # or "openai"
+  llm_model: "claude-sonnet-4-20250514"
+  counterfactual_ratio: 0.3            # 30% of nuScenes frames get counterfactual pairs
+  output_format: "structured_json"     # Must produce valid JSON matching output schema
+  temperature: 0.3                     # Low temp for consistent structured output
+
+# -----------------------------------------------------------------------------
+# Image Preprocessing (shared by all dataset loaders)
+# -----------------------------------------------------------------------------
+preprocessing:
+  target_resolution: [672, 448]        # [width, height] — matches model vision config
+  normalize: true
+  mean: [0.485, 0.456, 0.406]          # ImageNet mean (used for ViT input normalization)
+  std: [0.229, 0.224, 0.225]           # ImageNet std

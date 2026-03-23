@@ -1,0 +1,13 @@
+# DriveSense-VLM Demo — HuggingFace Spaces requirements
+# Hardware target: Free T4 GPU on HuggingFace Spaces
+#
+# These packages are installed by HF Spaces from this file.
+# Do NOT add GPU-only packages (TensorRT, vLLM) — T4 free tier
+# uses the quantized model via the transformers generate() API.
+
+gradio>=4.0
+transformers>=4.46
+torch
+pillow>=10.0
+pyyaml>=6.0
+accelerate>=0.34

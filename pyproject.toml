@@ -1,0 +1,169 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.backends.legacy:build"
+
+# =============================================================================
+# Project Metadata (PEP 621)
+# =============================================================================
+[project]
+name = "drivesense-vlm"
+version = "0.1.0"
+description = "SFT-optimized vision-language model for AV rare hazard detection"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "DriveSense-VLM Contributors" }]
+keywords = ["autonomous-vehicles", "vision-language-model", "hazard-detection", "LoRA", "SFT"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies — always installed, macOS-safe (no GPU)
+dependencies = [
+    "pyyaml>=6.0",
+    "pillow>=10.0",
+    "tqdm>=4.65",
+    "numpy>=1.24",
+    "requests>=2.28",
+]
+
+# =============================================================================
+# Optional Dependency Groups
+# =============================================================================
+[project.optional-dependencies]
+
+# Data loading and preprocessing
+data = [
+    "nuscenes-devkit>=1.1.11",
+    "opencv-python-headless>=4.8",
+    "pandas>=2.0",
+]
+
+# SFT training — HPC only (requires CUDA)
+training = [
+    "torch>=2.1",
+    "transformers>=4.46",
+    "peft>=0.13",
+    "accelerate>=0.34",
+    "datasets>=2.14",
+    "bitsandbytes>=0.41",
+    "wandb>=0.16",
+    # flash-attn>=2.5  # Install separately: pip install flash-attn --no-build-isolation
+]
+
+# Inference optimization — HPC only
+# vllm>=0.4.0          — HPC only, install: pip install vllm
+# tensorrt>=10.0       — HPC only, install via NVIDIA TensorRT wheel
+# autoawq>=0.2.0 needs torch; install on HPC after torch
+inference = [
+    "autoawq>=0.2.0",
+    # vllm>=0.4.0       # HPC-only: pip install vllm
+    # tensorrt>=10.0    # HPC-only: install via NVIDIA wheel
+]
+
+# Evaluation metrics and LLM-as-judge
+eval = [
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "openai>=1.0",
+    "anthropic>=0.30",
+]
+
+# Gradio demo (HuggingFace Spaces)
+demo = [
+    "gradio>=4.0",
+]
+
+# Development tools
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.1",
+    "black>=23.0",
+    "ipykernel>=6.25",
+]
+
+# All dependencies (excludes HPC-only: vllm, tensorrt, flash-attn)
+all = [
+    "pyyaml>=6.0",
+    "pillow>=10.0",
+    "tqdm>=4.65",
+    "numpy>=1.24",
+    "requests>=2.28",
+    "nuscenes-devkit>=1.1.11",
+    "opencv-python-headless>=4.8",
+    "pandas>=2.0",
+    "torch>=2.1",
+    "transformers>=4.46",
+    "peft>=0.13",
+    "accelerate>=0.34",
+    "datasets>=2.14",
+    "bitsandbytes>=0.41",
+    "wandb>=0.16",
+    "autoawq>=0.2.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "openai>=1.0",
+    "anthropic>=0.30",
+    "gradio>=4.0",
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.1",
+    "black>=23.0",
+    "ipykernel>=6.25",
+]
+
+# =============================================================================
+# Entry Points
+# =============================================================================
+[project.scripts]
+drivesense = "drivesense.__main__:main"
+
+# =============================================================================
+# Package Discovery
+# =============================================================================
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+# =============================================================================
+# Ruff Configuration
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM"]
+ignore = [
+    "ANN401",  # Dynamically typed expressions (Any)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["drivesense"]
+
+# =============================================================================
+# Black Configuration
+# =============================================================================
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+# =============================================================================
+# Pytest Configuration
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
