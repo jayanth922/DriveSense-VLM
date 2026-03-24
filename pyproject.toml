@@ -80,6 +80,11 @@ demo = [
     "gradio>=4.0",
 ]
 
+# Distributed processing with PySpark
+spark = [
+    "pyspark>=3.5",
+]
+
 # Development tools
 dev = [
     "pytest>=7.4",
@@ -107,6 +112,7 @@ all = [
     "bitsandbytes>=0.41",
     "wandb>=0.16",
     "autoawq>=0.2.0",
+    "pyspark>=3.5",
     "scikit-learn>=1.3",
     "scipy>=1.11",
     "openai>=1.0",

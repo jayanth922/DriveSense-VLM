@@ -170,11 +170,17 @@ for module_name, callable_name in STUB_CHECKS:
                 if "NotImplementedError" in src:
                     check(f"stub {module_name}.{callable_name}", True)
                 else:
-                    check(f"stub {module_name}.{callable_name}", False, "__init__ has no NotImplementedError")
+                    check(
+                        f"stub {module_name}.{callable_name}",
+                        False, "__init__ has no NotImplementedError",
+                    )
         elif callable(obj):
             try:
                 obj()  # type: ignore[call-arg]
-                check(f"stub {module_name}.{callable_name}", False, "Did not raise NotImplementedError")
+                check(
+                    f"stub {module_name}.{callable_name}",
+                    False, "Did not raise NotImplementedError",
+                )
             except NotImplementedError:
                 check(f"stub {module_name}.{callable_name}", True)
             except TypeError:
@@ -183,7 +189,10 @@ for module_name, callable_name in STUB_CHECKS:
                 if "NotImplementedError" in src:
                     check(f"stub {module_name}.{callable_name}", True)
                 else:
-                    check(f"stub {module_name}.{callable_name}", False, "No NotImplementedError in source")
+                    check(
+                        f"stub {module_name}.{callable_name}",
+                        False, "No NotImplementedError in source",
+                    )
         else:
             check(f"stub {module_name}.{callable_name}", False, "Not callable")
 

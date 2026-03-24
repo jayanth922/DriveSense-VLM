@@ -35,9 +35,9 @@ nuscenes:
   cameras:
     - "CAM_FRONT"   # Dashcam-perspective — primary modality for hazard detection
   rarity:
-    # Composite rarity score = sum of matching criteria below (max = 4).
+    # Composite rarity score = sum of matching criteria below (max = 6).
     # A frame must score >= min_rarity_score to be included.
-    proximity_threshold_m: 5.0          # +1 if any agent within 5m of ego path
+    proximity_threshold_m: 5.0          # +1 if any pedestrian/cyclist within 5m of ego
     occlusion_min_visibility: 0         # Occlusion: include agents at 0% visibility
     occlusion_max_visibility: 40        # up to 40% visibility (+1 if any such agent)
     min_agents_for_density: 15          # +1 if scene has >=15 annotated agents
@@ -46,7 +46,13 @@ nuscenes:
       - "night"
       - "fog"
       - "storm"
-    min_rarity_score: 3                 # Minimum composite score (0–4) to include frame
+    intersection_keywords:              # +1 (vru signal) if scene contains pedestrian
+      - "intersection"                  # AND scene description suggests intersection
+      - "crossing"
+      - "junction"
+      - "traffic light"
+      - "turn"
+    min_rarity_score: 3                 # Minimum composite score (0–6) to include frame
 
 # -----------------------------------------------------------------------------
 # DADA-2000 — Accident Frame Extraction (Phase 1b)
@@ -66,6 +72,17 @@ annotation:
   counterfactual_ratio: 0.3            # 30% of nuScenes frames get counterfactual pairs
   output_format: "structured_json"     # Must produce valid JSON matching output schema
   temperature: 0.3                     # Low temp for consistent structured output
+
+# -----------------------------------------------------------------------------
+# PySpark — Distributed Rarity Scoring (Phase 1a-spark)
+# -----------------------------------------------------------------------------
+spark:
+  app_name: "DriveSense-RarityScorer"
+  master: "local[*]"                        # Override with spark://host:7077 on cluster
+  driver_memory: "4g"
+  shuffle_partitions: 8                     # Low for local dev; raise to 200+ on HPC
+  output_dir: "outputs/data/spark_processed"
+  log_level: "WARN"
 
 # -----------------------------------------------------------------------------
 # Image Preprocessing (shared by all dataset loaders)

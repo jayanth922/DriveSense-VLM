@@ -67,6 +67,8 @@ outputs/
 checkpoints/
 results/
 datasets/
+# Unignore the Python package — data/ above would otherwise match src/drivesense/data/
+!src/drivesense/data/
 
 # -----------------------------------------------------------------------------
 # Weights & Biases

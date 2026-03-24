@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 0.5a: Project Scaffolding ✅
+Phase 1a-spark: PySpark Distributed Rarity Scoring ✅
 
 ## Architecture Decisions
 
@@ -25,6 +25,11 @@ Phase 0.5a: Project Scaffolding ✅
 - **Scripts**: `scripts/` — download, HPC setup, sanity check
 - **SLURM jobs**: `slurm/*.sbatch` — HPC job submission scripts
 - **Tests**: `tests/` — pytest test suite
+- **Filtering script**: `scripts/run_nuscenes_filter.py` — Phase 1a pipeline CLI
+- **Filtered output**: `outputs/data/nuscenes_filtered/` — images + metadata JSON
+- **Spark pipeline**: `src/drivesense/data/spark_pipeline.py` — Phase 1a-spark ETL
+- **Spark CLI**: `scripts/run_spark_pipeline.py` — Phase 1a-spark entry point
+- **Spark output**: `outputs/data/spark_processed/` — scored Parquet + analytics
 
 ## Commands
 
@@ -34,6 +39,11 @@ python scripts/run_sanity_check.py
 
 # Tests
 python -m pytest tests/ -v
+
+# Spark pipeline (requires pyspark: pip install pyspark>=3.5)
+python scripts/run_spark_pipeline.py --version v1.0-mini
+python scripts/run_spark_pipeline.py --skip-extraction        # reuse existing JSONL
+python scripts/run_spark_pipeline.py --analytics-only         # analytics only
 
 # Lint
 ruff check src/
@@ -55,7 +65,8 @@ black src/
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 0.5a | Project Scaffolding | ✅ Complete |
-| 1a | nuScenes rarity filtering + frame extraction | [ ] |
+| 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
+| 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
 | 1b | DADA-2000 critical moment extraction | [ ] |
 | 1c | LLM counterfactual annotation pipeline | [ ] |
 | 2a | LoRA SFT training on HPC | [ ] |
@@ -97,8 +108,23 @@ black src/
 
 ## Key Design Notes
 
-- nuScenes rarity score is a composite of: proximity (<5m), occlusion (0–40% visibility),
-  scene density (>15 agents), and adverse weather keywords. Minimum score: 3.
+- nuScenes rarity score is a composite of **6 binary signals** (max score = 6):
+  proximity (<5m to ego), occlusion (0–40% visibility), density (≥15 agents),
+  adverse weather/night keywords, vulnerable road user (**pedestrian present AND
+  scene description contains intersection keyword**), cyclist present.
+  Minimum threshold to keep a frame: **3** (from config).
+- `intersection_keywords` in `configs/data.yaml` drives the VRU signal's intersection
+  check (keyword match on `scene['description']` as a lightweight proxy for map data).
+- `NuScenesRarityFilter.filter_rare_frames()` scores ALL samples and caches results
+  in `_all_scores`; call it before `get_score_distribution()` or `export_filtered_dataset()`.
+- `export_filtered_dataset()` raises `RuntimeError` if `filter_rare_frames()` was never called.
+- **Spark pipeline** (`spark_pipeline.py`): `NuScenesMetadataExtractor` → JSON Lines;
+  `SparkRarityScorer.compute_all_scores()` left-joins 6 signal DataFrames + caches;
+  `SparkAnalytics` provides score_distribution (with cumulative %), signal_cooccurrence (6×6),
+  per_scene_stats, category_breakdown, temporal_clustering (burst detection via lag+window).
+- Spark schemas are always **explicit** (`StructType`) — never use `inferSchema`.
+- `filter_by_threshold()` raises `RuntimeError` if `compute_all_scores()` was not called first.
+- Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
 - DADA-2000 extraction: critical moment frame + 2 context frames before.
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").
