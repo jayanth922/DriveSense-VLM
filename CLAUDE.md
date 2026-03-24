@@ -25,6 +25,12 @@ Phase 1a-spark: PySpark Distributed Rarity Scoring ✅
 - **Scripts**: `scripts/` — download, HPC setup, sanity check
 - **SLURM jobs**: `slurm/*.sbatch` — HPC job submission scripts
 - **Tests**: `tests/` — pytest test suite
+- **DADA-2000 loader**: `src/drivesense/data/dada_loader.py` — Phase 1b DADA2000Loader
+- **DADA extraction CLI**: `scripts/run_dada_extraction.py` — Phase 1b entry point
+- **DADA output**: `outputs/data/dada_extracted/` — images + metadata.jsonl
+- **Unified dataset**: `src/drivesense/data/dataset.py` — UnifiedDatasetBuilder + DriveSenseDataset
+- **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder
+- **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files
 - **Filtering script**: `scripts/run_nuscenes_filter.py` — Phase 1a pipeline CLI
 - **Filtered output**: `outputs/data/nuscenes_filtered/` — images + metadata JSON
 - **Spark pipeline**: `src/drivesense/data/spark_pipeline.py` — Phase 1a-spark ETL
@@ -44,6 +50,15 @@ python -m pytest tests/ -v
 python scripts/run_spark_pipeline.py --version v1.0-mini
 python scripts/run_spark_pipeline.py --skip-extraction        # reuse existing JSONL
 python scripts/run_spark_pipeline.py --analytics-only         # analytics only
+
+# Phase 1b: DADA-2000 extraction
+python scripts/run_dada_extraction.py --dada-root ~/data/dada2000
+python scripts/run_dada_extraction.py --max-sequences 10      # debug/dev
+
+# Phase 1b: Build unified dataset
+python scripts/run_build_unified_dataset.py
+python scripts/run_build_unified_dataset.py --nuscenes-only
+python scripts/run_build_unified_dataset.py --dada-only
 
 # Lint
 ruff check src/
@@ -67,7 +82,7 @@ black src/
 | 0.5a | Project Scaffolding | ✅ Complete |
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
-| 1b | DADA-2000 critical moment extraction | [ ] |
+| 1b | DADA-2000 critical moment extraction | ✅ Complete |
 | 1c | LLM counterfactual annotation pipeline | [ ] |
 | 2a | LoRA SFT training on HPC | [ ] |
 | 2b | Mid-training evaluation integration | [ ] |
@@ -125,6 +140,11 @@ black src/
 - Spark schemas are always **explicit** (`StructType`) — never use `inferSchema`.
 - `filter_by_threshold()` raises `RuntimeError` if `compute_all_scores()` was not called first.
 - Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
+- DADA-2000 extraction: `DADA2000Loader` scans `<dada_root>/DADA-2000/<cat>/<seq>/images/`; extracts critical frame + `additional_context_frames` before (pre_accident) and after (mid_accident); resizes to 672×448 via `resize_with_aspect_ratio`; exports `metadata.jsonl` + images.
+- `normalize_column_names()` does fuzzy case-insensitive matching against Excel column headers — handles column name variations in `dada_text_annotations.xlsx`.
+- `UnifiedDatasetBuilder` merges nuScenes (Parquet or JSONL) + DADA-2000 (JSONL); assigns train/val/test via `StratifiedShuffleSplit` (stratified on source+category); falls back to sequential split when sklearn unavailable or n<10.
+- `DriveSenseDataset(manifest_path, split, config, processor)` takes the per-split manifest JSONL; `get_collate_fn()` returns `collate_fn` which batches images as a list (not tensored — VLM processor handles padding).
+- `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
 - DADA-2000 extraction: critical moment frame + 2 context frames before.
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").

@@ -36,12 +36,16 @@ except ImportError:
 # PySpark guard
 # ---------------------------------------------------------------------------
 try:
-    from pyspark.sql import SparkSession, DataFrame
-    from pyspark.sql import functions as F
-    from pyspark.sql import Window
+    from pyspark.sql import DataFrame, SparkSession, Window
+    from pyspark.sql import functions as F  # noqa: N812
     from pyspark.sql.types import (
-        ArrayType, DoubleType, IntegerType, LongType,
-        StringType, StructField, StructType,
+        ArrayType,
+        DoubleType,
+        IntegerType,
+        LongType,
+        StringType,
+        StructField,
+        StructType,
     )
     _SPARK_AVAILABLE = True
 except ImportError:

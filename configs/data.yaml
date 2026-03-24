@@ -60,8 +60,20 @@ nuscenes:
 dada2000:
   frame_extraction:
     method: "critical_moment"           # Extract frame at annotated accident timestamp
-    additional_context_frames: 2        # Also extract 2 frames before critical moment
+    additional_context_frames: 2        # Also extract 2 frames before and after critical moment
   max_frames: 200                       # Cap at 200 frames total from DADA-2000
+  annotation_file: "dada_text_annotations.xlsx"  # Optional; relative to dada2000_root
+  # DADA-2000 has 54 accident categories. Categories are zero-padded 3-digit strings.
+  num_categories: 54
+
+# -----------------------------------------------------------------------------
+# Unified Dataset — Merged nuScenes + DADA-2000 (Phase 1b)
+# -----------------------------------------------------------------------------
+unified:
+  output_dir: "outputs/data/unified"   # Directory for per-split manifest.jsonl files
+  # Frame sources included in unified dataset (all enabled by default)
+  include_nuscenes: true
+  include_dada2000: true
 
 # -----------------------------------------------------------------------------
 # Annotation — LLM Counterfactual Generation (Phase 1c)

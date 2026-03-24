@@ -116,6 +116,44 @@ def resize_with_aspect_ratio(
     return result
 
 
+def resize_with_letterbox(
+    image: PILImage.Image,
+    target_size: tuple[int, int] = (672, 448),
+) -> tuple[PILImage.Image, dict]:
+    """Letterbox-resize an image and return the resize parameters.
+
+    Uniformly scales the image to fit within ``target_size``, pads with black
+    pixels, and returns the parameters needed to project bounding boxes back to
+    the original coordinate space.
+
+    Args:
+        image: Input PIL Image.
+        target_size: ``(width, height)`` target resolution.
+
+    Returns:
+        ``(resized_image, params)`` where ``params`` is a dict with keys:
+        - ``"scale"``: float — uniform scale factor applied to the image.
+        - ``"pad_x"``: int — horizontal padding added to each side.
+        - ``"pad_y"``: int — vertical padding added to each side.
+        - ``"new_w"``: int — image width after scaling (before padding).
+        - ``"new_h"``: int — image height after scaling (before padding).
+    """
+    target_w, target_h = target_size
+    orig_w, orig_h = image.size
+    scale = min(target_w / orig_w, target_h / orig_h)
+    new_w = int(orig_w * scale)
+    new_h = int(orig_h * scale)
+    pad_x = (target_w - new_w) // 2
+    pad_y = (target_h - new_h) // 2
+
+    resized = image.resize((new_w, new_h), PILImage.LANCZOS)
+    canvas = PILImage.new("RGB", (target_w, target_h), (0, 0, 0))
+    canvas.paste(resized, (pad_x, pad_y))
+
+    params = {"scale": scale, "pad_x": pad_x, "pad_y": pad_y, "new_w": new_w, "new_h": new_h}
+    return canvas, params
+
+
 def load_and_preprocess_image(
     image_path: Path,
     target_size: tuple[int, int] = (672, 448),
