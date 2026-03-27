@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 2a: LoRA SFT Training ✅
+Phase 2b: Mid-Training Evaluation (Level 1 + 2) ✅
 
 ## Architecture Decisions
 
@@ -24,6 +24,12 @@ Phase 2a: LoRA SFT Training ✅
 - **Training pipeline**: `src/drivesense/training/sft_trainer.py` — Phase 2a: DriveSenseSFTDataset, DriveSenseDataCollator, setup_model_and_processor, train
 - **Training callbacks**: `src/drivesense/training/callbacks.py` — GPUMemoryCallback, SamplePredictionCallback, TrainingMetricsCallback, EarlyStoppingCallback
 - **Training CLI**: `scripts/run_training.py` — Phase 2a entry point (--dry-run, --mock, --debug, --resume)
+- **Grounding evaluator**: `src/drivesense/eval/grounding.py` — Phase 2b: compute_iou, Hungarian matching, compute_grounding_metrics, compute_severity_metrics, GroundingEvaluator
+- **Reasoning evaluator**: `src/drivesense/eval/reasoning.py` — Phase 2b: LLMJudge, MockLLMJudge, compute_reasoning_metrics, ReasoningEvaluator
+- **Eval CLI**: `scripts/run_evaluation.py` — Phase 2b entry point (--level, --mock-judge, --generate-predictions)
+- **Prediction generator**: `scripts/run_generate_predictions.py` — standalone inference script
+- **Eval outputs**: `outputs/eval/level1/` and `outputs/eval/level2/` — JSON + text reports
+- **Predictions output**: `outputs/predictions/test_predictions.jsonl` — raw + parsed model outputs
 - **SLURM job**: `slurm/train.sbatch` — HPC job submission for Phase 2a
 - **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
 - **Training checkpoints**: `outputs/training/` — intermediate checkpoints
@@ -85,6 +91,13 @@ python scripts/run_training.py --debug                            # 1 epoch / 10
 python scripts/run_training.py --config configs/training.yaml --resume   # full run + auto-resume
 sbatch slurm/train.sbatch                                         # submit to SLURM
 
+# Phase 2b: Evaluation
+python scripts/run_generate_predictions.py --mock                 # test inference pipeline (no download)
+python scripts/run_evaluation.py --level 1 --mock-judge           # Level 1 grounding (no API key)
+python scripts/run_evaluation.py --level 1 2 --mock-judge         # Level 1 + 2 (mock judge)
+python scripts/run_evaluation.py --generate-predictions --level 1 2   # full pipeline
+sbatch slurm/eval.sbatch                                          # submit eval to SLURM
+
 # Lint
 ruff check src/
 
@@ -110,7 +123,7 @@ black src/
 | 1b | DADA-2000 critical moment extraction | ✅ Complete |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training on HPC | ✅ Complete |
-| 2b | Mid-training evaluation integration | [ ] |
+| 2b | Mid-training evaluation integration | ✅ Complete |
 | 3a | LoRA merge | [ ] |
 | 3b | AWQ 4-bit quantization | [ ] |
 | 3c | TensorRT ViT compilation | [ ] |
@@ -186,6 +199,9 @@ black src/
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").
 - **SFT training** (`sft_trainer.py`): `DriveSenseSFTDataset` uses prefix-tokenization for label masking — tokenize full sequence AND prefix (messages[:-1] + add_generation_prompt=True); `prefix_len` marks the assistant start boundary; all tokens before it are masked to -100. `DriveSenseDataCollator` concatenates `pixel_values` along the patch dimension (dim=0) — never stack — because Qwen3-VL tiles images dynamically. `setup_model_and_processor()` loads `Qwen2_5_VLForConditionalGeneration` with LoRA; uses `use_reentrant=False` for gradient checkpointing; prefers `flash_attention_2`, falls back to `sdpa`. `train()` auto-detects latest checkpoint for resume; saves emergency checkpoint on failure; uploads LoRA artifact to W&B.
+- **Grounding evaluation** (`grounding.py`): `compute_iou` uses standard [x1,y1,x2,y2] intersection formula. `match_predictions_to_ground_truth` uses Hungarian assignment (scipy) with IoU cost matrix; falls back to greedy when scipy unavailable. `compute_grounding_metrics` takes prediction dicts with `frame_id`, `hazards`, `parse_failure` fields; tracks TP/FP/FN/TN per frame with no-hazard frames handled specially. `iou_at_threshold` = Jaccard (TP / (TP+FP+FN)); `false_positive_rate` = FP_no_hazard_frames / total_no_hazard_frames.
+- **Predictions JSONL format**: `{"frame_id": str, "raw_output": str, "parsed_output": dict|null, "parse_success": bool, "generation_time_ms": int}`. Parse failures are counted separately from detection misses.
+- **LLM judge** (`reasoning.py`): `LLMJudge` calls Claude with `JUDGE_SYSTEM_PROMPT` + per-dimension user prompt; `judge_batch` uses ThreadPoolExecutor with `max_concurrent` workers. `MockLLMJudge` returns random scores in [3,5] for all dimensions. `pass_rate` = fraction of examples scoring ≥3.5 on ALL three dimensions.
 - LoRA targets: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`.
 - AWQ quantization targets LLM decoder only; ViT stays in fp16 for accuracy.
 - TensorRT ViT uses fixed batch size (no dynamic batching) for deterministic latency.

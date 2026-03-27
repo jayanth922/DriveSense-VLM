@@ -33,13 +33,15 @@ grounding:
 reasoning:
   judge:
     provider: "anthropic"
-    model: "claude-sonnet-4-20250514"
+    model: "claude-sonnet-4-6"
     temperature: 0.1                  # Near-deterministic for reproducible scoring
+    max_concurrent: 5                 # Max parallel API calls in judge_batch
     dimensions:
       - "correctness"                 # Is the hazard description factually correct?
       - "completeness"                # Are all hazard aspects covered?
       - "action_relevance"            # Is the ego-vehicle action advice appropriate?
     scale: [1, 5]                     # 1 = very poor, 5 = excellent
+  pass_rate_threshold: 3.5            # Minimum score on ALL dims to count as "pass"
   targets:
     correctness_score: 3.5            # Mean judge correctness score >= 3.5/5
     completeness_score: 3.0           # Mean judge completeness score >= 3.0/5
@@ -82,3 +84,21 @@ robustness:
     max_weather_gap: 0.15             # Max acceptable IoU drop: clear vs adverse
     max_location_gap: 0.10            # Max acceptable IoU drop: Boston vs Singapore
     ood_relative_performance: 0.70    # OOD IoU >= 70% of in-distribution IoU
+
+# -----------------------------------------------------------------------------
+# Evaluation Data Paths
+# Override with --predictions / --ground-truth CLI flags.
+# -----------------------------------------------------------------------------
+eval_data:
+  predictions_path: "outputs/predictions/test_predictions.jsonl"
+  ground_truth_path: "outputs/data/sft_ready/sft_test.jsonl"
+
+# -----------------------------------------------------------------------------
+# Prediction Generation Config
+# Used by run_generate_predictions.py and --generate-predictions flag.
+# -----------------------------------------------------------------------------
+generation:
+  max_new_tokens: 512
+  temperature: 0.0                    # Greedy decoding for reproducible evaluation
+  adapter_path: "outputs/training/lora_adapter"
+  predictions_path: "outputs/predictions/test_predictions.jsonl"
