@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 2b: Mid-Training Evaluation (Level 1 + 2) ✅
+Phase 3a+3b: LoRA Merge + AWQ Quantization + TensorRT ViT ✅
 
 ## Architecture Decisions
 
@@ -31,6 +31,14 @@ Phase 2b: Mid-Training Evaluation (Level 1 + 2) ✅
 - **Eval outputs**: `outputs/eval/level1/` and `outputs/eval/level2/` — JSON + text reports
 - **Predictions output**: `outputs/predictions/test_predictions.jsonl` — raw + parsed model outputs
 - **SLURM job**: `slurm/train.sbatch` — HPC job submission for Phase 2a
+- **LoRA merger**: `src/drivesense/inference/merge_lora.py` — Phase 3a: LoRAMerger, merge_lora_checkpoint, verify_merge
+- **AWQ quantizer**: `src/drivesense/inference/quantize.py` — Phase 3a: AWQQuantizer, quantize_model, load_calibration_data
+- **TensorRT ViT**: `src/drivesense/inference/tensorrt_vit.py` — Phase 3b: ViTExtractor, _ViTWrapper, export_to_onnx, compile_tensorrt, benchmark_vit, full_pipeline
+- **Optimization CLI**: `scripts/run_optimize_model.py` — Phase 3a+3b entry point (--all, --merge, --quantize, --tensorrt, --mock)
+- **Optimization SLURM**: `slurm/optimize.sbatch` — HPC job for full optimization pipeline
+- **Merged model output**: `outputs/merged_model/` — full-weight .safetensors + processor
+- **Quantized model output**: `outputs/quantized_model/` — AWQ 4-bit weights + quant_config.json
+- **TensorRT output**: `outputs/tensorrt/` — vit.onnx, vit.engine, vit_benchmark.json, optimization_report.txt, fallback_info.json
 - **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
 - **Training checkpoints**: `outputs/training/` — intermediate checkpoints
 - **Annotated output**: `outputs/data/annotated/` — annotated_manifest.json, quality_report.json, counterfactual_frames.json
@@ -98,6 +106,15 @@ python scripts/run_evaluation.py --level 1 2 --mock-judge         # Level 1 + 2 
 python scripts/run_evaluation.py --generate-predictions --level 1 2   # full pipeline
 sbatch slurm/eval.sbatch                                          # submit eval to SLURM
 
+# Phase 3a+3b: Optimization
+python scripts/run_optimize_model.py --all --mock                 # test full pipeline (no GPU)
+python scripts/run_optimize_model.py --merge --adapter-path outputs/training/checkpoint-best
+python scripts/run_optimize_model.py --quantize --merged-model outputs/merged_model
+python scripts/run_optimize_model.py --tensorrt --model-dir outputs/merged_model
+python scripts/run_optimize_model.py --benchmark-vit --mock       # benchmark with mock data
+python scripts/run_optimize_model.py --benchmark-quality --mock
+sbatch slurm/optimize.sbatch                                      # submit full optimization to SLURM
+
 # Lint
 ruff check src/
 
@@ -124,9 +141,9 @@ black src/
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training on HPC | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
-| 3a | LoRA merge | [ ] |
-| 3b | AWQ 4-bit quantization | [ ] |
-| 3c | TensorRT ViT compilation | [ ] |
+| 3a | LoRA merge + AWQ quantization | ✅ Complete |
+| 3b | TensorRT ViT compilation | ✅ Complete |
+| 3c | vLLM production serving setup | [ ] |
 | 3d | vLLM production serving | [ ] |
 | 4a | Gradio demo on HF Spaces | [ ] |
 | 4b | Full 4-level evaluation | [ ] |
@@ -205,3 +222,7 @@ black src/
 - LoRA targets: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`.
 - AWQ quantization targets LLM decoder only; ViT stays in fp16 for accuracy.
 - TensorRT ViT uses fixed batch size (no dynamic batching) for deterministic latency.
+- **LoRA merge** (`merge_lora.py`): `LoRAMerger` loads base model in bfloat16, wraps with `PeftModel.from_pretrained`, calls `merge_and_unload()`, saves as .safetensors. `get_merge_stats` computes MD5 of config.json for reproducibility. `verify_merge` compares logits from adapter vs merged model with `torch.allclose(atol=1e-3)`. Merge MUST happen before quantization.
+- **AWQ quantization** (`quantize.py`): `AWQQuantizer` calls `model.named_modules()` to discover ViT module names (prefix match: "visual", "vision_model", "vit"); passes as `modules_to_not_convert` to `AutoAWQForCausalLM.quantize()`. Calibration data extracted from SFT train JSONL (system+user messages only, no assistant). Falls back to generic AV-domain strings if JSONL unavailable. `get_quantization_stats` reads `quant_config.json` for layer count.
+- **TensorRT ViT** (`tensorrt_vit.py`): `ViTExtractor` locates vision encoder at `model.visual` (or first child with "visual"/"vit" in name). `_ViTWrapper` accepts standard [B,C,H,W] input, provides fixed `grid_thw=[[1,16,24]]` for 672×448 images (28×28 patches → 16h×24w=384 patches). ONNX export: opset_version=17, no dynamic axes; falls back to `torch.jit.trace` on custom-op failure. TRT compilation: FP16, fixed workspace; falls back to `torch.compile(mode="reduce-overhead")` if TRT unavailable. All fallbacks documented in `fallback_info.json`. Benchmark measures mean/p50/p95/p99 latency + throughput with CUDA synchronization.
+- **Optimization CLI** (`run_optimize_model.py`): `--all` runs merge→quantize→TensorRT sequentially; each stage is idempotent (skips if sentinel file exists). `--mock` creates stub output files without loading any models — used in tests and CI.
