@@ -1,0 +1,194 @@
+[
+    {
+        "scenario": "A pedestrian wearing dark clothing suddenly steps off the curb from behind the parked vehicle on the {side} side of the road, approximately {distance} ahead of the ego vehicle.",
+        "label": "occluded_pedestrian",
+        "exclude_road_types": ["highway"],
+        "variables": {"side": ["left", "right"], "distance": ["20 meters", "30 meters", "15 meters"]}
+    },
+    {
+        "scenario": "A cyclist swerves into the ego vehicle's lane to avoid a {obstacle} in the bike lane.",
+        "label": "cyclist_proximity",
+        "exclude_road_types": ["highway"],
+        "variables": {"obstacle": ["pothole", "parked car door opening", "debris", "puddle"]}
+    },
+    {
+        "scenario": "A child runs across the road chasing a {object}, entering from the {side} between parked cars.",
+        "label": "jaywalking",
+        "exclude_road_types": ["highway"],
+        "variables": {"object": ["ball", "dog", "toy"], "side": ["left", "right"]}
+    },
+    {
+        "scenario": "A construction worker steps into the road to redirect traffic around a {obstacle} in the {side} lane.",
+        "label": "construction_zone",
+        "exclude_road_types": [],
+        "variables": {"obstacle": ["pothole repair", "drainage work", "utility repair"], "side": ["left", "right"]}
+    },
+    {
+        "scenario": "Heavy {weather} suddenly reduces visibility to less than {visibility}, making it difficult to see vehicles ahead.",
+        "label": "adverse_weather",
+        "exclude_road_types": [],
+        "variables": {"weather": ["rain", "fog", "sleet"], "visibility": ["50 meters", "30 meters", "20 meters"]}
+    },
+    {
+        "scenario": "An emergency vehicle with flashing lights approaches from the {direction} at high speed.",
+        "label": "emergency_vehicle",
+        "exclude_road_types": [],
+        "variables": {"direction": ["rear", "left side street", "right side street", "oncoming direction"]}
+    },
+    {
+        "scenario": "Traffic density suddenly increases as a large crowd of {crowd_type} fills the intersection ahead.",
+        "label": "high_density",
+        "exclude_road_types": ["highway", "parking"],
+        "variables": {"crowd_type": ["pedestrians crossing", "commuters", "festival-goers"]}
+    },
+    {
+        "scenario": "A {object} falls off a truck in the lane ahead and comes to rest in the ego vehicle's path.",
+        "label": "unusual_object",
+        "exclude_road_types": [],
+        "variables": {"object": ["large cardboard box", "wooden pallet", "metal sheet", "furniture item"]}
+    },
+    {
+        "scenario": "An elderly pedestrian using a walking aid begins crossing mid-block on the {side} side, moving slowly.",
+        "label": "jaywalking",
+        "exclude_road_types": ["highway"],
+        "variables": {"side": ["left", "right"]}
+    },
+    {
+        "scenario": "A cyclist riding in the {side} side of the lane wobbles and drifts toward the center line without signaling.",
+        "label": "cyclist_proximity",
+        "exclude_road_types": ["highway", "parking"],
+        "variables": {"side": ["left", "right"]}
+    },
+    {
+        "scenario": "A pedestrian wearing headphones and looking at their phone steps into the crosswalk against a red light approximately {distance} ahead.",
+        "label": "jaywalking",
+        "exclude_road_types": ["highway", "parking"],
+        "variables": {"distance": ["15 meters", "20 meters", "25 meters"]}
+    },
+    {
+        "scenario": "A child on a {vehicle} darts out of a driveway on the {side} side without checking for traffic.",
+        "label": "cyclist_proximity",
+        "exclude_road_types": ["highway"],
+        "variables": {"vehicle": ["bicycle", "scooter", "skateboard"], "side": ["left", "right"]}
+    },
+    {
+        "scenario": "A delivery robot or autonomous cart crosses the road at a designated crossing point but moves unexpectedly into the ego's lane.",
+        "label": "unusual_object",
+        "exclude_road_types": ["highway"],
+        "variables": {}
+    },
+    {
+        "scenario": "Road surface conditions worsen suddenly — a patch of {hazard} covers the {side} lane ahead.",
+        "label": "adverse_weather",
+        "exclude_road_types": [],
+        "variables": {"hazard": ["black ice", "standing water", "snow"], "side": ["left", "right", "center"]}
+    },
+    {
+        "scenario": "A pedestrian with a large {item} partially obscures their view and steps off the curb into the road.",
+        "label": "occluded_pedestrian",
+        "exclude_road_types": ["highway"],
+        "variables": {"item": ["umbrella", "delivery box", "stroller", "large bag"]}
+    },
+    {
+        "scenario": "Traffic backs up unexpectedly around a blind curve, with {count} vehicles stopped in the ego vehicle's lane.",
+        "label": "high_density",
+        "exclude_road_types": [],
+        "variables": {"count": ["several", "many", "a line of"]}
+    },
+    {
+        "scenario": "A runner crosses the road mid-block, weaving between moving vehicles on the {side} side.",
+        "label": "jaywalking",
+        "exclude_road_types": ["highway"],
+        "variables": {"side": ["left", "right"]}
+    },
+    {
+        "scenario": "A parked vehicle's door suddenly opens on the {side} side directly into the cyclist's path, forcing the cyclist into the ego's lane.",
+        "label": "cyclist_proximity",
+        "exclude_road_types": ["highway"],
+        "variables": {"side": ["left", "right"]}
+    },
+    {
+        "scenario": "A large {vehicle} runs a red light at the intersection ahead from the {direction}.",
+        "label": "unusual_object",
+        "exclude_road_types": ["highway", "parking"],
+        "variables": {"vehicle": ["truck", "SUV", "bus"], "direction": ["left", "right"]}
+    },
+    {
+        "scenario": "Emergency road work creates an unlit obstruction across the {side} lane with no advance warning signs.",
+        "label": "construction_zone",
+        "exclude_road_types": [],
+        "variables": {"side": ["left", "right", "center"]}
+    },
+    {
+        "scenario": "A group of {count} pedestrians spills off the sidewalk onto the road near a bus stop on the {side} side.",
+        "label": "high_density",
+        "exclude_road_types": ["highway"],
+        "variables": {"count": ["five", "eight", "ten or more"], "side": ["left", "right"]}
+    },
+    {
+        "scenario": "Dense {weather} reduces the visibility of traffic signals and road markings, making the intersection status unclear.",
+        "label": "adverse_weather",
+        "exclude_road_types": [],
+        "variables": {"weather": ["fog", "heavy rain", "blowing snow"]}
+    },
+    {
+        "scenario": "A pedestrian in a wheelchair attempts to cross the road at an unmarked point due to a blocked curb cut, moving slowly into the ego's path.",
+        "label": "occluded_pedestrian",
+        "exclude_road_types": ["highway"],
+        "variables": {}
+    },
+    {
+        "scenario": "A {animal} runs into the road from the {side} side, causing nearby vehicles to brake suddenly.",
+        "label": "unusual_object",
+        "exclude_road_types": [],
+        "variables": {"animal": ["dog", "deer", "large bird"], "side": ["left", "right"]}
+    },
+    {
+        "scenario": "A highway on-ramp merging vehicle fails to yield and cuts across the ego vehicle's lane at {distance}.",
+        "label": "unusual_object",
+        "exclude_road_types": ["parking", "intersection"],
+        "variables": {"distance": ["30 meters", "20 meters", "15 meters"]}
+    },
+    {
+        "scenario": "A school bus ahead activates its stop arm and flashing lights, requiring all traffic to halt while children cross.",
+        "label": "high_density",
+        "exclude_road_types": ["highway"],
+        "variables": {}
+    },
+    {
+        "scenario": "A street vendor's cart partially blocks the {side} lane, with {count} pedestrians clustered around it.",
+        "label": "high_density",
+        "exclude_road_types": ["highway"],
+        "variables": {"side": ["left", "right"], "count": ["several", "many"]}
+    },
+    {
+        "scenario": "A motorcyclist weaves between lanes at high speed, passing the ego vehicle on the {side} with minimal clearance.",
+        "label": "cyclist_proximity",
+        "exclude_road_types": ["parking"],
+        "variables": {"side": ["left", "right"]}
+    },
+    {
+        "scenario": "A construction barrier has shifted overnight, narrowing the road to one lane with no advance warning, forcing the ego vehicle to merge at short notice.",
+        "label": "construction_zone",
+        "exclude_road_types": [],
+        "variables": {}
+    },
+    {
+        "scenario": "A fire truck responds to an incident {direction} of the ego vehicle, requiring all vehicles to pull over and stop.",
+        "label": "emergency_vehicle",
+        "exclude_road_types": [],
+        "variables": {"direction": ["ahead", "behind", "approaching from the left", "approaching from the right"]}
+    },
+    {
+        "scenario": "A pedestrian with a guide dog steps into the road mid-block, moving slowly and unpredictably while the dog pulls {direction}.",
+        "label": "occluded_pedestrian",
+        "exclude_road_types": ["highway"],
+        "variables": {"direction": ["left", "right", "toward the center lane"]}
+    },
+    {
+        "scenario": "A utility crew has placed temporary traffic lights at a road narrowing, causing stop-and-go conditions {distance} ahead with no advance warning.",
+        "label": "construction_zone",
+        "exclude_road_types": [],
+        "variables": {"distance": ["50 meters", "40 meters", "30 meters"]}
+    }
+]

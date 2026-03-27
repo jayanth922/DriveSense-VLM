@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 1a-spark: PySpark Distributed Rarity Scoring ✅
+Phase 1c: LLM Annotation Pipeline ✅
 
 ## Architecture Decisions
 
@@ -17,6 +17,13 @@ Phase 1a-spark: PySpark Distributed Rarity Scoring ✅
 - **Demo**: Gradio + transformers on HF Spaces free T4 GPU
 - **Eval**: 4-level framework (grounding accuracy, reasoning quality, production readiness, robustness)
 - **Tracking**: Weights & Biases (`drivesense-vlm` project)
+
+- **Annotation pipeline**: `src/drivesense/data/annotation.py` — Phase 1c: AnnotationPromptBuilder, AnnotationValidator, LLMAnnotationPipeline, SFTDataFormatter
+- **Prompt templates**: `src/drivesense/data/prompts/` — annotation_system.txt, annotation_user.txt, counterfactual_user.txt, counterfactual_scenarios.json
+- **Annotation CLI**: `scripts/run_annotation_pipeline.py` — Phase 1c entry point
+- **Annotated output**: `outputs/data/annotated/` — annotated_manifest.json, quality_report.json, counterfactual_frames.json
+- **SFT-ready output**: `outputs/data/sft_ready/` — sft_train.jsonl, sft_val.jsonl, sft_test.jsonl
+- **Annotation cache**: `outputs/data/annotation_cache/` — per-frame JSON cache (enables resume)
 
 ## Key Paths
 
@@ -60,6 +67,12 @@ python scripts/run_build_unified_dataset.py
 python scripts/run_build_unified_dataset.py --nuscenes-only
 python scripts/run_build_unified_dataset.py --dada-only
 
+# Phase 1c: LLM annotation pipeline
+python scripts/run_annotation_pipeline.py --dry-run --mock-llm   # validate prompts, no API
+python scripts/run_annotation_pipeline.py --mock-llm             # full pipeline, no API key
+python scripts/run_annotation_pipeline.py                         # real run (needs ANTHROPIC_API_KEY)
+python scripts/run_annotation_pipeline.py --format-only          # reformat existing annotations
+
 # Lint
 ruff check src/
 
@@ -83,7 +96,7 @@ black src/
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
 | 1b | DADA-2000 critical moment extraction | ✅ Complete |
-| 1c | LLM counterfactual annotation pipeline | [ ] |
+| 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training on HPC | [ ] |
 | 2b | Mid-training evaluation integration | [ ] |
 | 3a | LoRA merge | [ ] |
@@ -146,6 +159,18 @@ black src/
 - `DriveSenseDataset(manifest_path, split, config, processor)` takes the per-split manifest JSONL; `get_collate_fn()` returns `collate_fn` which batches images as a list (not tensored — VLM processor handles padding).
 - `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
 - DADA-2000 extraction: critical moment frame + 2 context frames before.
+- **Annotation pipeline** (`annotation.py`): `AnnotationPromptBuilder` loads templates from
+  `prompts/*.txt` and `counterfactual_scenarios.json`; `AnnotationValidator` validates + fixes
+  LLM output (clamp coords, swap inverted bbox, add ego_context defaults, extract JSON from fences);
+  `LLMAnnotationPipeline` uses file-based per-frame cache (resume support), async batch with
+  semaphore, 3-retry exponential backoff; `SFTDataFormatter` writes Qwen3-VL chat-format JSONL.
+- Annotation target schema uses `hazards` array with `label` (from VALID_LABELS), `bbox_2d`
+  ([0,1000] integers), `severity`, `reasoning` (≥20 chars), `action`; plus `scene_summary`
+  and `ego_context` (weather, time_of_day, road_type).
+- Counterfactual augmentation: 30% of frames with real hazards get scenario-based CF prompts;
+  scenarios filtered by road_type (e.g. no cyclist scenarios on highway).
+- `MockLLMClient` enables full pipeline testing without API key (used in all tests).
+- SFT output: one JSONL per split; each line = `{messages: [system, user(image+text), assistant(json)], images: [...]}`.
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").
 - LoRA targets: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`.

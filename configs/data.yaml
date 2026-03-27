@@ -81,9 +81,22 @@ unified:
 annotation:
   llm_provider: "anthropic"            # or "openai"
   llm_model: "claude-sonnet-4-20250514"
-  counterfactual_ratio: 0.3            # 30% of nuScenes frames get counterfactual pairs
+  counterfactual_ratio: 0.3            # 30% of frames get counterfactual augmentations
   output_format: "structured_json"     # Must produce valid JSON matching output schema
   temperature: 0.3                     # Low temp for consistent structured output
+  max_tokens: 1024
+  max_concurrent_requests: 5           # Max simultaneous Anthropic API calls
+  retry_attempts: 3                    # Retries on API failure (exponential backoff)
+  retry_backoff_base: 2.0              # Backoff multiplier: wait = base^attempt seconds
+  cache_dir: "outputs/data/annotation_cache"   # Per-frame JSON cache for resume support
+  output_dir: "outputs/data/annotated"         # Annotated manifest + quality report
+  sft_output_dir: "outputs/data/sft_ready"     # SFT-formatted JSONL files for training
+
+  # Validation thresholds
+  validation:
+    min_reasoning_length: 20
+    max_hazards_per_frame: 10
+    require_ego_context: true
 
 # -----------------------------------------------------------------------------
 # PySpark — Distributed Rarity Scoring (Phase 1a-spark)

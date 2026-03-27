@@ -1,0 +1,22 @@
+Analyze this dashcam image for autonomous vehicle safety hazards.
+
+## Scene Context (from sensor metadata)
+- Source: {source}
+- Description: {scene_description}
+- Weather: {weather}
+- Time of Day: {time_of_day}
+- Road Type: {road_type}
+{source_specific_context}
+
+## Instructions
+1. Identify ALL safety-critical hazards visible in the image
+2. For each hazard, provide a bounding box as [x1, y1, x2, y2] where coordinates are integers normalized to [0, 1000] range (0=top-left, 1000=bottom-right)
+3. Classify each hazard using ONLY these labels: occluded_pedestrian, jaywalking, cyclist_proximity, construction_zone, adverse_weather, unusual_object, emergency_vehicle, high_density, no_hazard
+4. Assess severity: critical (immediate collision risk), high (danger within 3 seconds), medium (potential danger), low (minor concern)
+5. Explain your reasoning in 2-3 sentences focusing on WHY this is dangerous to the ego vehicle
+6. Recommend a specific driving action
+
+If NO hazards are present, use label "no_hazard" with bbox [0, 0, 1000, 1000].
+
+## Required Output Format (respond with ONLY this JSON, no other text)
+{output_schema}

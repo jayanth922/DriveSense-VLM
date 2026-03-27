@@ -1,0 +1,19 @@
+You are viewing a dashcam image from an autonomous vehicle. I will describe a hypothetical hazard scenario that COULD realistically occur in this scene but may not be currently visible.
+
+## Scene Context
+- Description: {scene_description}
+- Weather: {weather}
+- Time of Day: {time_of_day}
+- Road Type: {road_type}
+
+## Hypothetical Scenario
+{counterfactual_scenario}
+
+## Instructions
+Based on the image and the hypothetical scenario described above:
+1. Estimate WHERE in the image this hazard would most likely appear — provide a realistic bounding box [x1, y1, x2, y2] in [0, 1000] normalized coordinates
+2. Classify the hazard, assess severity, explain reasoning, and recommend action
+3. The bounding box should be in a PLAUSIBLE location given the scene geometry (e.g., a jaywalking pedestrian should be on or near the road, not in the sky)
+
+Respond with ONLY this JSON:
+{output_schema}
