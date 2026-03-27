@@ -37,6 +37,8 @@ mkdir -p logs
 # ── CUDA Memory Optimization ───────────────────────────────────────────────────
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 export TOKENIZERS_PARALLELISM=false
+export WANDB_PROJECT="drivesense-vlm"
+# export WANDB_MODE=offline  # Uncomment if compute nodes have no internet
 
 cd $HOME/DriveSense-VLM
 
@@ -50,7 +52,12 @@ echo "============================================================"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 # ── Training ───────────────────────────────────────────────────────────────────
-python -m drivesense.training.sft_trainer --config configs/training.yaml
+# Quick validation before committing to the full run (optional — remove for resume):
+# python scripts/run_training.py --dry-run
+#
+# Full training (resumes automatically from last checkpoint if one exists):
+python scripts/run_training.py --config configs/training.yaml --resume \
+    2>&1 | tee logs/train-${SLURM_JOB_ID}.log
 
 echo "============================================================"
 echo " Training completed: $(date '+%Y-%m-%d %H:%M:%S')"

@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 1c: LLM Annotation Pipeline ✅
+Phase 2a: LoRA SFT Training ✅
 
 ## Architecture Decisions
 
@@ -21,6 +21,12 @@ Phase 1c: LLM Annotation Pipeline ✅
 - **Annotation pipeline**: `src/drivesense/data/annotation.py` — Phase 1c: AnnotationPromptBuilder, AnnotationValidator, LLMAnnotationPipeline, SFTDataFormatter
 - **Prompt templates**: `src/drivesense/data/prompts/` — annotation_system.txt, annotation_user.txt, counterfactual_user.txt, counterfactual_scenarios.json
 - **Annotation CLI**: `scripts/run_annotation_pipeline.py` — Phase 1c entry point
+- **Training pipeline**: `src/drivesense/training/sft_trainer.py` — Phase 2a: DriveSenseSFTDataset, DriveSenseDataCollator, setup_model_and_processor, train
+- **Training callbacks**: `src/drivesense/training/callbacks.py` — GPUMemoryCallback, SamplePredictionCallback, TrainingMetricsCallback, EarlyStoppingCallback
+- **Training CLI**: `scripts/run_training.py` — Phase 2a entry point (--dry-run, --mock, --debug, --resume)
+- **SLURM job**: `slurm/train.sbatch` — HPC job submission for Phase 2a
+- **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
+- **Training checkpoints**: `outputs/training/` — intermediate checkpoints
 - **Annotated output**: `outputs/data/annotated/` — annotated_manifest.json, quality_report.json, counterfactual_frames.json
 - **SFT-ready output**: `outputs/data/sft_ready/` — sft_train.jsonl, sft_val.jsonl, sft_test.jsonl
 - **Annotation cache**: `outputs/data/annotation_cache/` — per-frame JSON cache (enables resume)
@@ -73,6 +79,12 @@ python scripts/run_annotation_pipeline.py --mock-llm             # full pipeline
 python scripts/run_annotation_pipeline.py                         # real run (needs ANTHROPIC_API_KEY)
 python scripts/run_annotation_pipeline.py --format-only          # reformat existing annotations
 
+# Phase 2a: SFT training
+python scripts/run_training.py --dry-run --mock                  # validate setup, no download
+python scripts/run_training.py --debug                            # 1 epoch / 10 steps (HPC sanity check)
+python scripts/run_training.py --config configs/training.yaml --resume   # full run + auto-resume
+sbatch slurm/train.sbatch                                         # submit to SLURM
+
 # Lint
 ruff check src/
 
@@ -97,7 +109,7 @@ black src/
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
 | 1b | DADA-2000 critical moment extraction | ✅ Complete |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
-| 2a | LoRA SFT training on HPC | [ ] |
+| 2a | LoRA SFT training on HPC | ✅ Complete |
 | 2b | Mid-training evaluation integration | [ ] |
 | 3a | LoRA merge | [ ] |
 | 3b | AWQ 4-bit quantization | [ ] |
@@ -173,6 +185,7 @@ black src/
 - SFT output: one JSONL per split; each line = `{messages: [system, user(image+text), assistant(json)], images: [...]}`.
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").
+- **SFT training** (`sft_trainer.py`): `DriveSenseSFTDataset` uses prefix-tokenization for label masking — tokenize full sequence AND prefix (messages[:-1] + add_generation_prompt=True); `prefix_len` marks the assistant start boundary; all tokens before it are masked to -100. `DriveSenseDataCollator` concatenates `pixel_values` along the patch dimension (dim=0) — never stack — because Qwen3-VL tiles images dynamically. `setup_model_and_processor()` loads `Qwen2_5_VLForConditionalGeneration` with LoRA; uses `use_reentrant=False` for gradient checkpointing; prefers `flash_attention_2`, falls back to `sdpa`. `train()` auto-detects latest checkpoint for resume; saves emergency checkpoint on failure; uploads LoRA artifact to W&B.
 - LoRA targets: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`.
 - AWQ quantization targets LLM decoder only; ViT stays in fp16 for accuracy.
 - TensorRT ViT uses fixed batch size (no dynamic batching) for deterministic latency.

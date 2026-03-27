@@ -44,6 +44,17 @@ training:
   eval_strategy: "epoch"             # Run validation at end of each epoch
   report_to: "wandb"
 
+  # --- Checkpoint Resume ---
+  resume_from_checkpoint: null        # Set to "latest" or a path; null = fresh start
+
+  # --- Debug Mode (overridden by --debug flag in run_training.py) ---
+  debug:
+    max_steps: 10
+    eval_steps: 5
+    logging_steps: 1
+    num_epochs: 1
+    save_strategy: "no"
+
 # -----------------------------------------------------------------------------
 # Weights & Biases Configuration
 # -----------------------------------------------------------------------------
