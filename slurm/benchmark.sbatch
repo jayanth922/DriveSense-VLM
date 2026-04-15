@@ -44,9 +44,18 @@ echo "============================================================"
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader
 
 # ── Benchmark ──────────────────────────────────────────────────────────────────
-python -m drivesense.inference.benchmark --config configs/inference.yaml
+mkdir -p outputs/benchmarks
+
+# Local transformers backend (always available once model is merged)
+python scripts/run_benchmark.py --local --output outputs/benchmarks/local_bench.json
+
+# vLLM backend (requires quantized model)
+python scripts/run_benchmark.py --vllm --output outputs/benchmarks/vllm_bench.json
+
+# ViT-only (requires TensorRT engine)
+python scripts/run_benchmark.py --vit-only --output outputs/benchmarks/vit_bench.json
 
 echo "============================================================"
 echo " Benchmark completed: $(date '+%Y-%m-%d %H:%M:%S')"
-echo " Results: outputs/eval/benchmark_results.json"
+echo " Results: outputs/benchmarks/"
 echo "============================================================"
