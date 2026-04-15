@@ -220,12 +220,38 @@ def _create_symlinks(project_root: str, drive_root: str) -> None:
 
 
 def _install_deps(project_root: str, groups: list[str]) -> None:
-    """Install pip extras from the project's pyproject.toml."""
+    """Install pip extras from the project's pyproject.toml.
+
+    Upgrades setuptools first (Colab ships an outdated version that breaks
+    PEP 660 editable installs), then tries editable install with a
+    non-editable fallback.
+    """
     extras = ",".join(groups)
-    cmd = [sys.executable, "-m", "pip", "install", "-e", f".[{extras}]", "-q"]
-    print(f"[setup] Installing deps: pip install -e '[{extras}]' …")
     t0 = time.time()
-    subprocess.run(cmd, cwd=project_root, check=True)
+
+    # Step 1: upgrade setuptools so PEP 660 editable installs work on Colab
+    print("[setup] Upgrading setuptools/wheel/build …")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade",
+         "setuptools", "wheel", "build", "-q"],
+        cwd=project_root,
+        check=True,
+    )
+
+    # Step 2: editable install, non-editable fallback
+    print(f"[setup] Installing deps: pip install -e '[{extras}]' …")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-e", f".[{extras}]", "-q"],
+        cwd=project_root,
+    )
+    if result.returncode != 0:
+        print(f"[setup] Editable install failed — falling back to non-editable …")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", f".[{extras}]", "-q"],
+            cwd=project_root,
+            check=True,
+        )
+
     print(f"[setup] Dependencies installed in {time.time() - t0:.0f}s")
 
 
