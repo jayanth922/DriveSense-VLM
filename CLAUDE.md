@@ -154,8 +154,31 @@ black src/
 | Environment | Hardware | Notes |
 |-------------|----------|-------|
 | Local (macOS Apple Silicon) | CPU only | No GPU packages; dev + data + eval deps only |
-| HPC (SJSU CoE) | A100 / H100, SLURM | conda env `drivesense`; full training stack |
+| **Google Colab Pro** ($10/mo + extra CUs) | A100 80GB / T4 | Primary execution; notebooks 00–05 |
+| HPC (SJSU CoE) — alternative | A100 / H100, SLURM | `slurm/` scripts; see `slurm/README.md` |
 | Demo (HF Spaces) | Free T4 GPU | Gradio app; transformers inference only |
+
+## Colab Execution
+
+- **Notebooks**: `notebooks/00_data_pipeline.ipynb` → `01_training.ipynb` → `02_optimization.ipynb` → `03_benchmark.ipynb` → `04_evaluation.ipynb`
+- **Quick start**: `notebooks/05_quick_start.ipynb` — full pipeline end-to-end (~110 CU, 8–10 h)
+- **Setup utility**: `scripts/colab_setup.py` — `setup_colab()` mounts Drive, clones repo, creates symlinks, verifies GPU
+- **Colab config overrides**: `configs/colab.yaml` — Drive-based paths for all outputs
+- **Data/outputs on Drive**: `/content/drive/MyDrive/DriveSense-VLM/` (persistent across sessions)
+- **Code on ephemeral SSD**: `/content/DriveSense-VLM/` (re-cloned each session for fast I/O)
+- **Disconnect recovery**: Rerun setup cells → training auto-resumes from Drive checkpoints
+
+## Compute Budget (Colab Pro, ~200 CU total)
+
+| Stage | GPU | CU |
+|-------|-----|----|
+| Data pipeline | T4 (~3 h) | ~5 |
+| SFT training | A100 (~6 h) | ~72 |
+| Optimization | A100 (~1.5 h) | ~18 |
+| Benchmarks | A100 (~1 h) | ~12 |
+| Evaluation | A100 (~1 h) | ~12 |
+| **Estimated total** | | **~119** |
+| Buffer for reruns/debugging | | ~81 |
 
 ## Phase Tracker
 

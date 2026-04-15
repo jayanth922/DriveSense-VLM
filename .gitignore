@@ -118,6 +118,13 @@ Temporary Items
 # -----------------------------------------------------------------------------
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
+*.ipynb_checkpoints
+
+# -----------------------------------------------------------------------------
+# Google Colab
+# -----------------------------------------------------------------------------
+# Colab appends output metadata to notebooks — ignore these diffs
+# (actual notebook source is committed; only output cells are ephemeral)
 
 # -----------------------------------------------------------------------------
 # IDE / Editor

@@ -1,0 +1,47 @@
+# Google Colab Pro Configuration Overrides
+# These values override the defaults in configs/*.yaml when running on Colab.
+# Usage: pass --config configs/colab.yaml to any CLI script, or use the
+#        colab_setup.setup_colab() utility which wires up Drive symlinks so
+#        the default paths resolve correctly without explicit overrides.
+
+colab:
+  drive_root: "/content/drive/MyDrive/DriveSense-VLM"
+  repo_root: "/content/DriveSense-VLM"
+  # A100 80GB for training / optimization / benchmarks; T4 for data pipeline
+  gpu_target: "A100"
+
+# ---------------------------------------------------------------------------
+# Path overrides — all persistent on Google Drive
+# ---------------------------------------------------------------------------
+paths:
+  nuscenes_root: "/content/drive/MyDrive/DriveSense-VLM/data/nuscenes"
+  dada2000_root: "/content/drive/MyDrive/DriveSense-VLM/data/dada2000"
+  output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/data"
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+training:
+  output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/training"
+  # Colab sessions disconnect — checkpoint every 250 steps for safe recovery
+  save_steps: 250
+  save_total_limit: 3
+
+# ---------------------------------------------------------------------------
+# Inference / optimization
+# ---------------------------------------------------------------------------
+inference:
+  merge:
+    output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/merged_model"
+  quantization:
+    output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/quantized_model"
+  tensorrt:
+    output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/tensorrt"
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+eval:
+  output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/eval"
+  predictions_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/predictions"
+  benchmarks_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/benchmarks"

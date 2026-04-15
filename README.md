@@ -113,7 +113,21 @@ python scripts/run_sanity_check.py
 python -m pytest tests/ -v
 ```
 
-### HPC Training (SJSU CoE A100/H100)
+### Google Colab (GPU Training — Primary)
+
+1. Open [`notebooks/01_training.ipynb`](notebooks/01_training.ipynb) in Google Colab
+2. Set **Runtime → Change runtime type → A100 GPU**
+3. Run all cells — training auto-saves checkpoints to Google Drive
+4. Continue with [`02_optimization.ipynb`](notebooks/02_optimization.ipynb) → [`03_benchmark.ipynb`](notebooks/03_benchmark.ipynb) → [`04_evaluation.ipynb`](notebooks/04_evaluation.ipynb)
+
+Or run everything at once: open [`notebooks/05_quick_start.ipynb`](notebooks/05_quick_start.ipynb)
+(A100, ~8–10 hours, ~110 CU out of ~200 CU Colab Pro budget).
+
+> **Session disconnect recovery**: All outputs are saved to Google Drive. If Colab disconnects
+> mid-training, rerun the setup cells and then the training cell — it auto-resumes from the
+> latest checkpoint.
+
+### HPC Training (SJSU CoE — Alternative)
 
 ```bash
 scp -r DriveSense-VLM/ $HPC_USER@hpc.sjsu.edu:~/
@@ -126,6 +140,8 @@ sbatch slurm/optimize.sbatch       # LoRA merge → AWQ → TensorRT
 sbatch slurm/eval.sbatch           # Levels 1–2 evaluation
 sbatch slurm/benchmark.sbatch      # Level 3 production benchmark
 ```
+
+See [`slurm/README.md`](slurm/README.md) for details.
 
 ### Mock Pipeline (no GPU required)
 
