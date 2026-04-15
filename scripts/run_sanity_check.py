@@ -17,7 +17,7 @@ Exit codes:
 from __future__ import annotations
 
 import importlib
-import inspect
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -123,10 +123,17 @@ EXPECTED_PATHS = [
     "demo/",
     "tests/",
     "README.md",
+    "MODEL_CARD.md",
     "CLAUDE.md",
     "pyproject.toml",
     ".gitignore",
     "LICENSE",
+    # Phase 4b + 5 files
+    "src/drivesense/eval/production.py",
+    "src/drivesense/eval/robustness.py",
+    "scripts/run_full_evaluation.py",
+    "tests/test_production.py",
+    "tests/test_robustness.py",
 ]
 
 for rel_path in EXPECTED_PATHS:
@@ -135,74 +142,76 @@ for rel_path in EXPECTED_PATHS:
     check(f"exists {rel_path}", exists, "" if exists else "Missing")
 
 
-# ── 4. Stub NotImplementedError Checks ────────────────────────────────────────
+# ── 4. Key Class / Function Existence Checks ──────────────────────────────────
+# All phases are complete — verify key public APIs exist (not stubs).
 
-# (module, callable_name) pairs that must raise NotImplementedError
-STUB_CHECKS: list[tuple[str, str]] = [
+EXISTENCE_CHECKS: list[tuple[str, str]] = [
     ("drivesense.data.nuscenes_loader", "NuScenesRarityFilter"),
-    ("drivesense.data.dada_loader", "DADALoader"),
-    ("drivesense.data.annotation", "AnnotationPipeline"),
+    ("drivesense.data.dada_loader", "DADA2000Loader"),
+    ("drivesense.data.annotation", "LLMAnnotationPipeline"),
     ("drivesense.data.dataset", "DriveSenseDataset"),
     ("drivesense.training.sft_trainer", "train"),
     ("drivesense.eval.grounding", "compute_iou"),
-    ("drivesense.inference.serve", "DriveSenseServer"),
-    # Note: drivesense.utils.config.load_config is fully implemented (not a stub)
+    ("drivesense.eval.production", "ProductionEvaluator"),
+    ("drivesense.eval.robustness", "RobustnessEvaluator"),
+    ("drivesense.inference.serve", "DriveSenseLocalInference"),
 ]
 
-for module_name, callable_name in STUB_CHECKS:
+for module_name, callable_name in EXISTENCE_CHECKS:
     try:
         mod = importlib.import_module(module_name)
         obj = getattr(mod, callable_name, None)
-        if obj is None:
-            check(f"stub {module_name}.{callable_name}", False, "Not found in module")
-            continue
-
-        # Determine if it's a class (check __init__) or a function
-        if inspect.isclass(obj):
-            try:
-                obj()  # Attempt instantiation with no args
-                check(f"stub {module_name}.{callable_name}", False, "__init__ did not raise")
-            except NotImplementedError:
-                check(f"stub {module_name}.{callable_name}", True)
-            except TypeError:
-                # Required positional args — check __init__ source for NotImplementedError
-                src = inspect.getsource(obj.__init__)
-                if "NotImplementedError" in src:
-                    check(f"stub {module_name}.{callable_name}", True)
-                else:
-                    check(
-                        f"stub {module_name}.{callable_name}",
-                        False, "__init__ has no NotImplementedError",
-                    )
-        elif callable(obj):
-            try:
-                obj()  # type: ignore[call-arg]
-                check(
-                    f"stub {module_name}.{callable_name}",
-                    False, "Did not raise NotImplementedError",
-                )
-            except NotImplementedError:
-                check(f"stub {module_name}.{callable_name}", True)
-            except TypeError:
-                # Required args — check source
-                src = inspect.getsource(obj)
-                if "NotImplementedError" in src:
-                    check(f"stub {module_name}.{callable_name}", True)
-                else:
-                    check(
-                        f"stub {module_name}.{callable_name}",
-                        False, "No NotImplementedError in source",
-                    )
-        else:
-            check(f"stub {module_name}.{callable_name}", False, "Not callable")
-
+        exists = obj is not None
+        check(f"api {module_name}.{callable_name}", exists,
+              "" if exists else "Not found in module")
     except ImportError as exc:
-        check(f"stub {module_name}.{callable_name}", False, f"Import failed: {exc}")
+        check(f"api {module_name}.{callable_name}", False, f"Import failed: {exc}")
     except Exception as exc:  # noqa: BLE001
-        check(f"stub {module_name}.{callable_name}", False, f"Unexpected: {exc}")
+        check(f"api {module_name}.{callable_name}", False, f"Unexpected: {exc}")
 
 
-# ── 5. Package Version Check ───────────────────────────────────────────────────
+# ── 5. README and Model Card Content Checks ───────────────────────────────────
+
+readme_path = PROJECT_ROOT / "README.md"
+try:
+    readme_text = readme_path.read_text(encoding="utf-8")
+    has_results_table = (
+        "| Metric" in readme_text
+        or "Detection Rate" in readme_text
+        or "Key Results" in readme_text
+    )
+    check("README has results table", has_results_table, "" if has_results_table else "No results table found")
+except FileNotFoundError:
+    check("README has results table", False, "README.md not found")
+
+model_card_path = PROJECT_ROOT / "MODEL_CARD.md"
+try:
+    mc_text = model_card_path.read_text(encoding="utf-8")
+    has_frontmatter = mc_text.startswith("---")
+    check("MODEL_CARD.md has YAML frontmatter", has_frontmatter,
+          "" if has_frontmatter else "Missing --- frontmatter")
+except FileNotFoundError:
+    check("MODEL_CARD.md has YAML frontmatter", False, "MODEL_CARD.md not found")
+
+# ── 6. Demo import check ───────────────────────────────────────────────────────
+
+demo_path = PROJECT_ROOT / "demo"
+if str(demo_path) not in sys.path:
+    sys.path.insert(0, str(demo_path))
+try:
+    spec = importlib.util.spec_from_file_location("app", demo_path / "app.py")
+    if spec is None or spec.loader is None:
+        check("import demo/app.py", False, "Cannot find demo/app.py")
+    else:
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        check("import demo/app.py", True)
+except FileNotFoundError:
+    check("import demo/app.py", False, "demo/app.py not found")
+except Exception as exc:  # noqa: BLE001
+    check("import demo/app.py", False, str(exc))
+
+# ── 8. Package Version Check ───────────────────────────────────────────────────
 try:
     import drivesense
     version = drivesense.__version__

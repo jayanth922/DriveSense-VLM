@@ -6,7 +6,7 @@ SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
 
 ## Current Phase
 
-Phase 3a+3b: LoRA Merge + AWQ Quantization + TensorRT ViT ✅
+ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 
 ## Architecture Decisions
 
@@ -38,6 +38,17 @@ Phase 3a+3b: LoRA Merge + AWQ Quantization + TensorRT ViT ✅
 - **Optimization SLURM**: `slurm/optimize.sbatch` — HPC job for full optimization pipeline
 - **Merged model output**: `outputs/merged_model/` — full-weight .safetensors + processor
 - **Quantized model output**: `outputs/quantized_model/` — AWQ 4-bit weights + quant_config.json
+- **Serving layer**: `src/drivesense/inference/serve.py` — Phase 3c: DriveSenseVLLMServer (vLLM), DriveSenseLocalInference (transformers), draw_hazard_boxes, DRIVESENSE_SYSTEM_PROMPT, SEVERITY_COLORS
+- **Benchmark CLI**: `scripts/run_benchmark.py` — Phase 3c entry point (--local, --vllm, --vit-only, --mock, --output)
+- **Gradio demo**: `demo/app.py` — Phase 4a: create_demo(), analyze_image(), draw_hazard_boxes(), lazy model loading, HF Spaces T4 target
+- **Production evaluator**: `src/drivesense/eval/production.py` — Phase 4b: ProductionEvaluator, compute_production_metrics, load_benchmark_results, generate_report, benchmark_latency, run_production_benchmark
+- **Robustness evaluator**: `src/drivesense/eval/robustness.py` — Phase 4b: RobustnessEvaluator, stratify_predictions, compute_stratified_metrics, _extract_stratum_value, _compute_all_gaps, run_robustness_evaluation
+- **Full evaluation CLI**: `scripts/run_full_evaluation.py` — Phase 4b: --level 1 2 3 4, --mock, --generate-report; compile_final_report, box-drawing ASCII report (_WIDTH=66)
+- **Model card**: `MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
+- **Demo requirements**: `demo/requirements.txt` — autoawq>=0.2.0, qwen-vl-utils>=0.0.4 added
+- **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
+- **Demo examples**: `demo/examples/` — placeholder directory for example dashcam images
+- **Benchmark output**: `outputs/benchmarks/` — per-run JSON benchmark results
 - **TensorRT output**: `outputs/tensorrt/` — vit.onnx, vit.engine, vit_benchmark.json, optimization_report.txt, fallback_info.json
 - **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
 - **Training checkpoints**: `outputs/training/` — intermediate checkpoints
@@ -115,6 +126,22 @@ python scripts/run_optimize_model.py --benchmark-vit --mock       # benchmark wi
 python scripts/run_optimize_model.py --benchmark-quality --mock
 sbatch slurm/optimize.sbatch                                      # submit full optimization to SLURM
 
+# Phase 3c: Inference benchmark
+python scripts/run_benchmark.py --mock                            # mock mode (no GPU)
+python scripts/run_benchmark.py --local                           # local transformers backend
+python scripts/run_benchmark.py --vllm                            # vLLM backend (HPC only)
+python scripts/run_benchmark.py --vit-only                        # ViT-only throughput
+sbatch slurm/benchmark.sbatch                                     # submit full benchmark to SLURM
+
+# Phase 4a: Gradio demo
+python demo/app.py                                                # run locally (port 7860)
+
+# Phase 4b: Full 4-level evaluation
+python scripts/run_full_evaluation.py --mock                      # all levels (no GPU)
+python scripts/run_full_evaluation.py --level 1 2 --mock-judge    # levels 1+2 (no API key)
+python scripts/run_full_evaluation.py --level 3 4 --mock          # levels 3+4 mock
+python scripts/run_full_evaluation.py --generate-report           # compile final report
+
 # Lint
 ruff check src/
 
@@ -143,10 +170,11 @@ black src/
 | 2b | Mid-training evaluation integration | ✅ Complete |
 | 3a | LoRA merge + AWQ quantization | ✅ Complete |
 | 3b | TensorRT ViT compilation | ✅ Complete |
-| 3c | vLLM production serving setup | [ ] |
-| 3d | vLLM production serving | [ ] |
-| 4a | Gradio demo on HF Spaces | [ ] |
-| 4b | Full 4-level evaluation | [ ] |
+| 3c | vLLM production serving setup | ✅ Complete |
+| 3d | vLLM production serving | ✅ Complete |
+| 4a | Gradio demo on HF Spaces | ✅ Complete |
+| 4b | Full 4-level evaluation | ✅ Complete |
+| 5 | Documentation & Model Card | ✅ Complete |
 
 ## Rules for Claude Code
 
@@ -226,3 +254,13 @@ black src/
 - **AWQ quantization** (`quantize.py`): `AWQQuantizer` calls `model.named_modules()` to discover ViT module names (prefix match: "visual", "vision_model", "vit"); passes as `modules_to_not_convert` to `AutoAWQForCausalLM.quantize()`. Calibration data extracted from SFT train JSONL (system+user messages only, no assistant). Falls back to generic AV-domain strings if JSONL unavailable. `get_quantization_stats` reads `quant_config.json` for layer count.
 - **TensorRT ViT** (`tensorrt_vit.py`): `ViTExtractor` locates vision encoder at `model.visual` (or first child with "visual"/"vit" in name). `_ViTWrapper` accepts standard [B,C,H,W] input, provides fixed `grid_thw=[[1,16,24]]` for 672×448 images (28×28 patches → 16h×24w=384 patches). ONNX export: opset_version=17, no dynamic axes; falls back to `torch.jit.trace` on custom-op failure. TRT compilation: FP16, fixed workspace; falls back to `torch.compile(mode="reduce-overhead")` if TRT unavailable. All fallbacks documented in `fallback_info.json`. Benchmark measures mean/p50/p95/p99 latency + throughput with CUDA synchronization.
 - **Optimization CLI** (`run_optimize_model.py`): `--all` runs merge→quantize→TensorRT sequentially; each stage is idempotent (skips if sentinel file exists). `--mock` creates stub output files without loading any models — used in tests and CI.
+- **Serving layer** (`serve.py`): `DRIVESENSE_SYSTEM_PROMPT` and `SEVERITY_COLORS` are module-level constants shared between serve.py and demo/app.py. `DriveSenseVLLMServer` loads AWQ model via `LLM(quantization="awq", trust_remote_code=True)`; `predict_batch` uses `SamplingParams(temperature=0, stop=["<|im_end|>"])`; `benchmark()` uses `ThreadPoolExecutor` for concurrent load. `DriveSenseLocalInference` is lazy-loaded (model=None at init); `_run_inference` uses `apply_chat_template` + `do_sample=False`; both AWQ and full-precision models work.
+- **`draw_hazard_boxes`** (`serve.py`): Creates RGBA overlay image, fills each bbox with `alpha=50` (~20% opacity), solid `alpha=255` outline; label `"{label} ({severity})"` drawn 18px above box. Uses `Image.alpha_composite` then converts back to RGB. Falls back gracefully if PIL unavailable.
+- **bbox normalisation**: bbox coordinates in [0, 1000] → pixel: `x = bbox_x * w / 1000`. Same formula in both serve.py and demo/app.py (demo has standalone `draw_hazard_boxes` for Spaces compatibility).
+- **`_parse_json_output`** (`serve.py`): 3-stage parse: direct JSON → strip markdown fences → regex extract `{...}`. Returns `{"parse_failure": raw, "hazards": []}` on total failure.
+- **Benchmark CLI** (`run_benchmark.py`): `--local` times `DriveSenseLocalInference.predict()` sequentially; `--vllm` delegates to `server.benchmark()` (concurrent); `--vit-only` delegates to `ViTExtractor.benchmark_vit()`; `--mock` returns pre-baked numbers. Output timestamped to `outputs/benchmarks/benchmark_<ts>.json`. Synthetic images (solid colour) used when no `--image-dir` supplied.
+- **Production evaluator** (`production.py`): `ProductionEvaluator` reads all thresholds from `config["production"]["targets"]`. `load_benchmark_results(dir)` reads `local_bench.json` (→ T4 metrics) and `vllm_bench.json` (→ A100 metrics). ViT benchmark is optional: when None, `vit_tensorrt_p50_ms=None` and `vit_latency` target passes (True). Latency target is strict less-than (`p50 < target`, so equal fails). `quant_degradation_pct` derived from `label_agreement` field: `(1 - label_agreement) * 100`. `_get_p50(d)` tries `p50_ms` then falls back to `mean_ms`.
+- **Robustness evaluator** (`robustness.py`): Stratifies by `time_of_day`, `weather`, `location`, `ego_speed_bucket`, `source`. `_extract_stratum_value(gt_record, key)` checks three locations: `metadata{}` → `ego_context{}` → top-level → "unknown". `_speed_bucket(speed_kmh)`: < 20 → "0-20", < 40 → "20-40", else "40+". `_infer_source(frame_id)`: "dada" prefix → "dada2000" else "nuscenes". `_detection_rate_gap(stratum)`: max(DR) - min(DR) for groups with n_frames > 0. Empty groups handled via `contextlib.suppress` → `_empty_group_metrics()` (returns zeros). `ood_relative_performance` = dada2000_DR / nuscenes_DR (None-safe).
+- **Full evaluation CLI** (`run_full_evaluation.py`): `--level 1 2 3 4` selects which levels to run; `--mock` bypasses real model inference for all levels; `--mock-judge` uses MockLLMJudge for Level 2. Box-drawing report uses `_WIDTH=66`, `_row()` pads to exact width, `_bar()` for horizontal lines. `_mock_level3_metrics()`: T4 p50=432ms, A100 p50=187ms, VIT=21ms, fps=9.2, VRAM=3.1GB, deg=1.3%. `_mock_level4_metrics()`: day/night gap=0.072, weather=0.118, location=0.054, OOD=0.891. Level 3 reads stored JSON files (idempotent — no live GPU benchmark).
+- **Gradio demo** (`demo/app.py`): `create_demo()` builds the `gr.Blocks` interface; `analyze_image()` calls `model.predict_with_visualization()`; returns `(annotated_image, json_str, latency_str)`. `_load_model()` is a global lazy-loader — safe under Gradio's single-threaded default mode. Config loaded from `configs/inference.yaml` if present, else `MODEL_PATH` env var. `demo/app.py` has standalone `draw_hazard_boxes` that mirrors `serve.py` for Spaces compatibility (no package install needed).
+- **HF Spaces**: `demo/README.md` has YAML frontmatter (`sdk: gradio`, `app_file: app.py`, hardware T4). `demo/requirements.txt` includes `autoawq>=0.2.0` and `qwen-vl-utils>=0.0.4`.
