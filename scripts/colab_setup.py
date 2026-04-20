@@ -241,6 +241,7 @@ def _clone_repo(github_repo: str) -> str:
         print(f"[setup] Repo cloned to {project_root}")
 
     os.chdir(project_root)
+    print(f"[setup] Working dir: {os.getcwd()}")
     return project_root
 
 
