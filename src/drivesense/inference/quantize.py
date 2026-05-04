@@ -45,6 +45,30 @@ except ImportError:
     _torch = None  # type: ignore[assignment]
     _TORCH_AVAILABLE = False
 
+try:
+    import bitsandbytes as _bitsandbytes  # type: ignore[import]  # noqa: F401
+    _BNB_AVAILABLE = True
+except ImportError:
+    _BNB_AVAILABLE = False
+
+try:
+    from transformers import BitsAndBytesConfig as _BitsAndBytesConfig  # type: ignore[import]
+    _BNB_CONFIG_AVAILABLE = True
+except ImportError:
+    _BitsAndBytesConfig = None  # type: ignore[assignment]
+    _BNB_CONFIG_AVAILABLE = False
+
+try:
+    from transformers import AutoModelForImageTextToText as _AutoModelImgText  # type: ignore[import]
+    _AUTO_IMG_TEXT_AVAILABLE = True
+except ImportError:
+    try:
+        from transformers import Qwen2_5_VLForConditionalGeneration as _AutoModelImgText  # type: ignore[import]  # noqa: I001
+        _AUTO_IMG_TEXT_AVAILABLE = True
+    except ImportError:
+        _AutoModelImgText = None  # type: ignore[assignment]
+        _AUTO_IMG_TEXT_AVAILABLE = False
+
 # Vision-encoder module name prefixes to exclude from quantization
 _VIT_MODULE_PREFIXES: tuple[str, ...] = (
     "visual",
@@ -296,6 +320,222 @@ class AWQQuantizer:
 
 
 # ---------------------------------------------------------------------------
+# BitsAndBytesQuantizer
+# ---------------------------------------------------------------------------
+
+
+class BitsAndBytesQuantizer:
+    """bitsandbytes NF4 4-bit quantization (LLM decoder only, ViT stays fp16).
+
+    Uses HuggingFace BitsAndBytesConfig for in-place quantization at load time.
+    Saves the model with embedded quantization metadata for portability.
+
+    Args:
+        config: Merged config dict (inference + model sections required).
+    """
+
+    def __init__(self, config: dict) -> None:
+        quant_cfg = config.get("quantization", {})
+        self._output_dir = Path(quant_cfg.get("output_dir", "outputs/quantized_model"))
+        self._bits: int = int(quant_cfg.get("bits", 4))
+        self._quant_type: str = quant_cfg.get("quant_type", "nf4")
+        self._double_quant: bool = bool(quant_cfg.get("double_quant", True))
+        self._compute_dtype: str = quant_cfg.get("compute_dtype", "bfloat16")
+        self._calibration_samples: int = int(quant_cfg.get("calibration_samples", 128))
+        self._cfg = config
+
+    def quantize(
+        self,
+        merged_model_dir: Path,
+        output_dir: Path | None = None,
+        calibration_data: list[str] | None = None,
+    ) -> Path:
+        """Load merged model with BnB NF4 config and save quantized weights.
+
+        Args:
+            merged_model_dir: Path to merged full-precision model.
+            output_dir:       Where to save quantized model (default from config).
+            calibration_data: Unused — kept for API compatibility with AWQQuantizer.
+
+        Returns:
+            Path to quantized model directory.
+        """
+        _require_bnb()
+        out = Path(output_dir) if output_dir else self._output_dir
+        out.mkdir(parents=True, exist_ok=True)
+
+        t0 = time.perf_counter()
+        logger.info("Loading model with bitsandbytes NF4: %s", merged_model_dir)
+
+        compute_dtype = getattr(_torch, self._compute_dtype, _torch.bfloat16)  # type: ignore[union-attr]
+        bnb_config = _BitsAndBytesConfig(  # type: ignore[operator]
+            load_in_4bit=True,
+            bnb_4bit_quant_type=self._quant_type,
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_use_double_quant=self._double_quant,
+        )
+        model = _AutoModelImgText.from_pretrained(  # type: ignore[union-attr]
+            str(merged_model_dir),
+            quantization_config=bnb_config,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+
+        logger.info("Saving bitsandbytes quantized model to: %s", out)
+        model.save_pretrained(str(out))  # type: ignore[union-attr]
+        _copy_processor_files(merged_model_dir, out)
+        _write_bnb_quant_config(out, self._bits, self._quant_type, self._double_quant, self._compute_dtype)
+
+        elapsed = time.perf_counter() - t0
+        stats = self.get_quantization_stats(out)
+        logger.info(
+            "BnB NF4 quantization complete in %.1fs — %.2f GB",
+            elapsed,
+            stats["quantized_size_gb"],
+        )
+        return out
+
+    def get_quantization_stats(self, quantized_dir: Path) -> dict:
+        """Return model size and compression statistics.
+
+        Args:
+            quantized_dir: Path to quantized model directory.
+
+        Returns:
+            Dict with model_size_bytes, quantized_size_gb, compression_ratio,
+            quantized_layers, total_weight_files.
+        """
+        out = Path(quantized_dir)
+        st_files = list(out.glob("*.safetensors"))
+        bin_files = list(out.glob("*.bin"))
+        weight_files = st_files or bin_files
+        total_bytes = sum(f.stat().st_size for f in weight_files)
+        size_gb = total_bytes / (1024 ** 3)
+        fp16_size = size_gb * (16 / self._bits)
+        compression = fp16_size / size_gb if size_gb > 0 else 1.0
+
+        quant_layers = 0
+        qcfg_path = out / "quant_config.json"
+        if qcfg_path.exists():
+            with qcfg_path.open(encoding="utf-8") as fh:
+                qcfg = json.load(fh)
+            quant_layers = qcfg.get("num_quantized_layers", 0)
+
+        return {
+            "model_size_bytes": total_bytes,
+            "quantized_size_gb": round(size_gb, 3),
+            "compression_ratio": round(compression, 2),
+            "quantized_layers": quant_layers,
+            "total_weight_files": len(weight_files),
+        }
+
+    def benchmark_quality(
+        self,
+        merged_model_dir: Path,
+        quantized_model_dir: Path,
+        test_samples: list[dict],
+    ) -> dict:
+        """Compare quantized vs full-precision model output quality.
+
+        Args:
+            merged_model_dir:    Path to full-precision merged model.
+            quantized_model_dir: Path to BnB quantized model.
+            test_samples:        List of GT annotation dicts.
+
+        Returns:
+            Dict with text_similarity, bbox_mae, label_agreement,
+            size_reduction, original_size_gb, quantized_size_gb.
+        """
+        _require_torch()
+        orig_stats = self.get_quantization_stats(merged_model_dir)
+        quant_stats = self.get_quantization_stats(quantized_model_dir)
+        orig_gb = orig_stats["quantized_size_gb"]
+        quant_gb = quant_stats["quantized_size_gb"]
+        size_reduction = orig_gb / quant_gb if quant_gb > 0 else 0.0
+        return _empty_quality_metrics(orig_gb, quant_gb, size_reduction)
+
+
+# ---------------------------------------------------------------------------
+# ModelQuantizer — method dispatch
+# ---------------------------------------------------------------------------
+
+
+class ModelQuantizer:
+    """Dispatch quantizer — routes to AWQQuantizer or BitsAndBytesQuantizer.
+
+    Reads ``config["quantization"]["method"]`` to select the backend:
+
+    - ``"awq"``: AWQ 4-bit quantization (autoawq required)
+    - ``"bitsandbytes"`` / ``"bnb"``: bitsandbytes NF4 quantization
+
+    Args:
+        config: Merged config dict (inference + model sections required).
+    """
+
+    def __init__(self, config: dict) -> None:
+        method = config.get("quantization", {}).get("method", "awq").lower()
+        if method in ("bitsandbytes", "bnb"):
+            self._backend: AWQQuantizer | BitsAndBytesQuantizer = BitsAndBytesQuantizer(config)
+            self._method = "bitsandbytes"
+        else:
+            self._backend = AWQQuantizer(config)
+            self._method = "awq"
+        logger.info("ModelQuantizer: using %s backend", self._method)
+
+    @property
+    def method(self) -> str:
+        """Return the active quantization method name."""
+        return self._method
+
+    def quantize(
+        self,
+        merged_model_dir: Path,
+        output_dir: Path | None = None,
+        calibration_data: list[str] | None = None,
+    ) -> Path:
+        """Quantize the model using the configured backend.
+
+        Args:
+            merged_model_dir: Path to merged full-precision model.
+            output_dir:       Where to save quantized model.
+            calibration_data: Optional calibration texts (AWQ only).
+
+        Returns:
+            Path to quantized model directory.
+        """
+        return self._backend.quantize(merged_model_dir, output_dir, calibration_data)
+
+    def get_quantization_stats(self, quantized_dir: Path) -> dict:
+        """Return quantization statistics for the model directory.
+
+        Args:
+            quantized_dir: Path to quantized model directory.
+
+        Returns:
+            Stats dict with size, compression ratio, and layer counts.
+        """
+        return self._backend.get_quantization_stats(quantized_dir)
+
+    def benchmark_quality(
+        self,
+        merged_model_dir: Path,
+        quantized_model_dir: Path,
+        test_samples: list[dict],
+    ) -> dict:
+        """Compare quantized vs full-precision model quality.
+
+        Args:
+            merged_model_dir:    Path to full-precision model.
+            quantized_model_dir: Path to quantized model.
+            test_samples:        List of GT annotation dicts.
+
+        Returns:
+            Quality metrics dict.
+        """
+        return self._backend.benchmark_quality(merged_model_dir, quantized_model_dir, test_samples)
+
+
+# ---------------------------------------------------------------------------
 # Module-level convenience functions (kept from original stub)
 # ---------------------------------------------------------------------------
 
@@ -306,18 +546,18 @@ def quantize_model(
     config: dict,
     calibration_data: list[str] | None = None,
 ) -> Path:
-    """Convenience wrapper for AWQ quantization.
+    """Convenience wrapper — routes to AWQ or bitsandbytes based on config method.
 
     Args:
         merged_model_dir: Path to merged model (Phase 3a output).
         output_dir:       Destination for quantized model.
         config:           Inference config dict.
-        calibration_data: Optional list of calibration text strings.
+        calibration_data: Optional list of calibration text strings (AWQ only).
 
     Returns:
         Path to quantized model directory.
     """
-    quantizer = AWQQuantizer(config)
+    quantizer = ModelQuantizer(config)
     return quantizer.quantize(merged_model_dir, output_dir, calibration_data)
 
 
@@ -352,6 +592,24 @@ def _require_awq() -> None:
         raise ImportError(
             f"HPC dependencies not available: {', '.join(missing)}. "
             "Install on HPC: pip install autoawq transformers"
+        )
+
+
+def _require_bnb() -> None:
+    """Raise ImportError if bitsandbytes or Transformers dependencies are missing."""
+    missing = []
+    if not _TORCH_AVAILABLE:
+        missing.append("torch")
+    if not _TRANSFORMERS_AVAILABLE:
+        missing.append("transformers")
+    if not _BNB_AVAILABLE:
+        missing.append("bitsandbytes")
+    if not _AUTO_IMG_TEXT_AVAILABLE:
+        missing.append("transformers (AutoModelForImageTextToText)")
+    if missing:
+        raise ImportError(
+            f"HPC dependencies not available: {', '.join(missing)}. "
+            "Install on HPC: pip install bitsandbytes transformers"
         )
 
 
@@ -414,6 +672,25 @@ def _fallback_calibration_texts(n: int) -> list[str]:
     return [
         "Analyse this dashcam image for road hazards and describe what you see."
     ] * n
+
+
+def _write_bnb_quant_config(
+    out_dir: Path,
+    bits: int,
+    quant_type: str,
+    double_quant: bool,
+    compute_dtype: str,
+) -> None:
+    """Write quant_config.json for bitsandbytes quantization metadata."""
+    cfg = {
+        "bits": bits,
+        "quant_type": quant_type,
+        "double_quant": double_quant,
+        "compute_dtype": compute_dtype,
+        "method": "bitsandbytes",
+        "num_quantized_layers": 0,
+    }
+    (out_dir / "quant_config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
 def _copy_processor_files(src: Path, dst: Path) -> None:

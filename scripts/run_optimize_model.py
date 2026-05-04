@@ -142,7 +142,10 @@ def run_quantize(
     merged_model_dir: Path,
     mock: bool = False,
 ) -> Path:
-    """Run Stage 2: AWQ 4-bit quantization.
+    """Run Stage 2: model quantization (bitsandbytes NF4 or AWQ).
+
+    Dispatches based on ``config["quantization"]["method"]``:
+    ``"bitsandbytes"`` → BitsAndBytesQuantizer, ``"awq"`` → AWQQuantizer.
 
     Args:
         config:           Merged config dict.
@@ -160,8 +163,8 @@ def run_quantize(
     if mock:
         return _mock_quantize(out)
 
-    from drivesense.inference.quantize import AWQQuantizer  # noqa: PLC0415
-    quantizer = AWQQuantizer(config)
+    from drivesense.inference.quantize import ModelQuantizer  # noqa: PLC0415
+    quantizer = ModelQuantizer(config)
     return quantizer.quantize(merged_model_dir)
 
 
@@ -245,8 +248,8 @@ def run_benchmark_quality(
             "quantized_size_gb": 1.08,
         }
 
-    from drivesense.inference.quantize import AWQQuantizer  # noqa: PLC0415
-    quantizer = AWQQuantizer(config)
+    from drivesense.inference.quantize import ModelQuantizer  # noqa: PLC0415
+    quantizer = ModelQuantizer(config)
     return quantizer.benchmark_quality(merged_dir, quantized_dir, test_samples=[])
 
 
@@ -302,7 +305,8 @@ def main() -> None:
         results["merge"] = {"output_dir": str(merged_dir)}
 
     if args.all or args.quantize:
-        logger.info("=== Stage 2: AWQ Quantization ===")
+        _method = config.get("quantization", {}).get("method", "awq").upper()
+        logger.info("=== Stage 2: %s Quantization ===", _method)
         quantized_dir = run_quantize(config, merged_dir, mock=args.mock)
         results["quantize"] = {"output_dir": str(quantized_dir)}
 

@@ -80,7 +80,9 @@ class LoRAMerger:
         model_cfg = config.get("model", {})
         self._output_dir = Path(merge_cfg.get("output_dir", "outputs/merged_model"))
         self._safe_serialization: bool = bool(merge_cfg.get("safe_serialization", True))
-        self._model_name: str = model_cfg.get("name", "Qwen/Qwen3-VL-2B-Instruct")
+        self._model_name: str = (
+            merge_cfg.get("base_model") or model_cfg.get("name", "Qwen/Qwen2.5-VL-3B-Instruct")
+        )
         self._revision: str = model_cfg.get("revision", "main")
         self._torch_dtype: str = model_cfg.get("torch_dtype", "bfloat16")
         self._cfg = config

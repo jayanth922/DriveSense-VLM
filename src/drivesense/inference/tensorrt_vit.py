@@ -436,9 +436,12 @@ class ViTExtractor:
             json.dumps(benchmark, indent=2), encoding="utf-8"
         )
 
-        # Step 4: Human-readable report
+        # Step 4: Human-readable report + embed benchmark in fallback_info when TRT absent
         fallback_path = out / "fallback_info.json"
         fallback_info = json.loads(fallback_path.read_text()) if fallback_path.exists() else {}
+        if engine_path.suffix != ".engine":
+            fallback_info["benchmark"] = benchmark
+            _save_fallback_info(out, fallback_info)
         report_path = out / "optimization_report.txt"
         report_path.write_text(
             _format_optimization_report(benchmark, fallback_info), encoding="utf-8"
