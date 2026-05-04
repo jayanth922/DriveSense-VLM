@@ -421,17 +421,29 @@ class ViTExtractor:
 
         onnx_path = out / "vit.onnx"
         engine_path = out / "vit.engine"
+        benchmark: dict = {}
 
-        # Step 1: ONNX export
-        onnx_path = self.export_to_onnx(model_dir, onnx_path=onnx_path)
+        try:
+            # Step 1: ONNX export
+            onnx_path = self.export_to_onnx(model_dir, onnx_path=onnx_path)
 
-        # Step 2: TensorRT (or torch.compile fallback)
-        engine_path = self.compile_tensorrt(onnx_path, engine_path=engine_path)
+            # Step 2: TensorRT (or torch.compile fallback)
+            engine_path = self.compile_tensorrt(onnx_path, engine_path=engine_path)
 
-        # Step 3: Benchmark
-        benchmark = self.benchmark_vit(
-            model_dir, engine_path=engine_path if engine_path.suffix == ".engine" else None
-        )
+            # Step 3: Benchmark
+            benchmark = self.benchmark_vit(
+                model_dir, engine_path=engine_path if engine_path.suffix == ".engine" else None
+            )
+        except (RuntimeError, AttributeError) as exc:
+            if _TRT_AVAILABLE:
+                raise
+            logger.warning(
+                "ONNX/ViT export failed (TRT not installed) — E2E torch.compile fallback: %s",
+                exc,
+            )
+            engine_path = out / "vit.torch_compile"
+            benchmark = _run_e2e_compile_benchmark(model_dir, out)
+
         (out / "vit_benchmark.json").write_text(
             json.dumps(benchmark, indent=2), encoding="utf-8"
         )
@@ -528,20 +540,28 @@ def _require_torch_transformers() -> None:
 
 
 def _get_vision_encoder(model: Any) -> Any:
-    """Return the ViT submodule from Qwen3-VL.
+    """Return the ViT submodule from Qwen2.5-VL / Qwen3-VL.
 
-    Qwen3-VL stores the vision encoder at model.visual.
+    Checks direct attributes (vision_tower, visual, vision_model), then
+    attributes nested under model.model (LLaVA-style wrappers), then scans
+    named children as a final fallback.
 
     Args:
-        model: Loaded Qwen3-VL model.
+        model: Loaded Qwen2.5-VL model.
 
     Returns:
         Vision encoder nn.Module.
     """
-    for attr in ("visual", "vision_model", "encoder"):
+    for attr in ("vision_tower", "visual", "vision_model"):
         if hasattr(model, attr):
             return getattr(model, attr)
-    # Fallback: search named children
+    # Check nested under model.model (some HF wrapper architectures)
+    inner = getattr(model, "model", None)
+    if inner is not None:
+        for attr in ("vision_tower", "visual"):
+            if hasattr(inner, attr):
+                return getattr(inner, attr)
+    # Fallback: scan named children
     for name, module in model.named_children():
         if any(k in name.lower() for k in ("visual", "vision", "vit")):
             return module
@@ -826,3 +846,165 @@ def _format_optimization_report(benchmark: dict, fallback_info: dict) -> str:
         ]
     lines += ["", "=" * 62]
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# E2E torch.compile fallback benchmark (when ONNX export + TRT both unavailable)
+# ---------------------------------------------------------------------------
+
+
+def _read_quant_type(model_dir: Path) -> str:
+    """Read quantization type string from config.json (empty string if absent)."""
+    cfg_path = Path(model_dir) / "config.json"
+    if not cfg_path.exists():
+        return ""
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        qcfg = cfg.get("quantization_config", {})
+        return str(qcfg.get("quant_type", "") or qcfg.get("quant_method", ""))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _load_model_for_e2e(model_dir: Path) -> tuple[Any, Any, Any]:
+    """Load the full VLM and processor for E2E benchmark.
+
+    Args:
+        model_dir: Path to merged/quantized model directory.
+
+    Returns:
+        ``(model, processor, device)`` tuple.
+    """
+    model = _VLMClass.from_pretrained(  # type: ignore[union-attr]
+        str(model_dir),
+        device_map="auto",
+        torch_dtype=_torch.float16,  # type: ignore[union-attr]
+        trust_remote_code=True,
+    )
+    processor = _AutoProcessor.from_pretrained(str(model_dir))  # type: ignore[union-attr]
+    model.eval()
+    device = next(model.parameters()).device
+    return model, processor, device
+
+
+def _make_e2e_inputs(processor: Any, device: Any) -> dict:
+    """Build synthetic 672×448 VLM inputs for E2E benchmark.
+
+    Args:
+        processor: Loaded AutoProcessor.
+        device:    Target torch device.
+
+    Returns:
+        Dict of tensors ready for model.generate().
+    """
+    from PIL import Image as _PILImage  # type: ignore[import]  # noqa: PLC0415
+    import numpy as _np  # noqa: PLC0415
+
+    img = _PILImage.fromarray(_np.zeros((448, 672, 3), dtype=_np.uint8))
+    messages = [{"role": "user", "content": [
+        {"type": "image", "image": img},
+        {"type": "text", "text": "Describe hazards."},
+    ]}]
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    raw = processor(text=[text], images=[img], return_tensors="pt")
+    return {k: v.to(device) if hasattr(v, "to") else v for k, v in raw.items()}
+
+
+def _timed_e2e(
+    model: Any,
+    inputs: dict,
+    max_new_tokens: int,
+    n_warmup: int,
+    n_timed: int,
+) -> float:
+    """Time model.generate() calls; return mean latency in ms.
+
+    Args:
+        model:          VLM with generate().
+        inputs:         Processor output dict.
+        max_new_tokens: Token budget per call.
+        n_warmup:       Warmup iterations (not timed).
+        n_timed:        Timed iterations.
+
+    Returns:
+        Mean latency in milliseconds.
+    """
+    cuda = hasattr(_torch, "cuda") and _torch.cuda.is_available()  # type: ignore[union-attr]
+    times: list[float] = []
+    for i in range(n_warmup + n_timed):
+        if cuda:
+            _torch.cuda.synchronize()  # type: ignore[union-attr]
+        t0 = time.perf_counter()
+        with _torch.no_grad():  # type: ignore[union-attr]
+            model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        if cuda:
+            _torch.cuda.synchronize()  # type: ignore[union-attr]
+        if i >= n_warmup:
+            times.append((time.perf_counter() - t0) * 1000)
+    return sum(times) / len(times) if times else 0.0
+
+
+def _run_e2e_compile_benchmark(model_dir: Path, output_dir: Path) -> dict:
+    """E2E torch.compile benchmark when ONNX export + TRT are both unavailable.
+
+    Loads the quantized model, benchmarks eager vs torch.compile(model.forward),
+    saves results to fallback_info.json and writes a vit.torch_compile sentinel.
+
+    Args:
+        model_dir:   Path to model directory.
+        output_dir:  Where to write fallback_info.json and sentinel.
+
+    Returns:
+        Dict with method, eager_mean_ms, compiled_mean_ms, speedup, gpu,
+        vram_gb, vram_peak_gb, quantization, max_new_tokens.
+    """
+    _require_torch_transformers()
+    model, processor, device = _load_model_for_e2e(model_dir)
+
+    try:
+        inputs = _make_e2e_inputs(processor, device)
+    except Exception as exc:  # noqa: BLE001  — PIL / processor issue
+        logger.warning("E2E input build failed (%s) — text-only inputs", exc)
+        raw = processor(text=["Describe hazards."], return_tensors="pt")
+        inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in raw.items()}
+
+    max_new_tokens = 50
+    logger.info("E2E fallback: eager benchmark (3 warmup + 5 timed)…")
+    eager_mean = _timed_e2e(model, inputs, max_new_tokens, n_warmup=3, n_timed=5)
+    logger.info("Eager mean: %.1f ms", eager_mean)
+
+    compiled_mean = eager_mean
+    try:
+        model.forward = _torch.compile(model.forward, mode="default")  # type: ignore[union-attr]
+        logger.info("E2E fallback: compiled benchmark (3 warmup + 5 timed)…")
+        compiled_mean = _timed_e2e(model, inputs, max_new_tokens, n_warmup=3, n_timed=5)
+        logger.info("Compiled mean: %.1f ms", compiled_mean)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("torch.compile failed: %s — using eager latency", exc)
+
+    speedup = eager_mean / compiled_mean if compiled_mean > 0 else 1.0
+    gpu, vram_gb, vram_peak_gb = "", 0.0, 0.0
+    if hasattr(_torch, "cuda") and _torch.cuda.is_available():  # type: ignore[union-attr]
+        gpu = _torch.cuda.get_device_name(0)  # type: ignore[union-attr]
+        vram_gb = _torch.cuda.memory_allocated(0) / (1024 ** 3)  # type: ignore[union-attr]
+        vram_peak_gb = _torch.cuda.max_memory_allocated(0) / (1024 ** 3)  # type: ignore[union-attr]
+
+    result = {
+        "method": "torch_compile_e2e",
+        "eager_mean_ms": round(eager_mean, 2),
+        "compiled_mean_ms": round(compiled_mean, 2),
+        "speedup": round(speedup, 3),
+        "gpu": gpu,
+        "vram_gb": round(vram_gb, 3),
+        "vram_peak_gb": round(vram_peak_gb, 3),
+        "quantization": _read_quant_type(model_dir),
+        "max_new_tokens": max_new_tokens,
+    }
+    _save_fallback_info(Path(output_dir), {
+        "trt_method": "torch_compile_e2e",
+        "trt_note": "ONNX export failed; TRT not installed; E2E torch.compile fallback used",
+        "benchmark": result,
+    })
+    sentinel = Path(output_dir) / "vit.torch_compile"
+    sentinel.write_text(json.dumps({"method": "torch_compile_e2e", **result}), encoding="utf-8")
+    return result
