@@ -2,19 +2,74 @@
 
 > SFT-Optimized Vision-Language Model for Autonomous Vehicle Rare Hazard Detection
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jayanth922/DriveSense-VLM/blob/main/notebooks/05_demo.ipynb)
+[![HuggingFace Model](https://img.shields.io/badge/🤗%20Model-jayanth922%2FDriveSense--VLM-yellow)](https://huggingface.co/jayanth922/DriveSense-VLM)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
-[![Model: Qwen3-VL-2B](https://img.shields.io/badge/model-Qwen3--VL--2B-orange)](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)
+[![Model: Qwen2.5-VL-3B](https://img.shields.io/badge/model-Qwen2.5--VL--3B-orange)](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-435%20passing-brightgreen)](#testing)
 
-**DriveSense-VLM** fine-tunes [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)
+**DriveSense-VLM** fine-tunes [Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
 with LoRA SFT for detecting and explaining **rare safety-critical hazards** in autonomous driving
 scenarios. The model produces structured JSON with grounded bounding boxes, hazard classification,
 severity assessment, chain-of-thought reasoning, and ego-vehicle action recommendations.
 
-[🎮 Try the Demo](https://huggingface.co/spaces) &nbsp;|&nbsp;
+[🎮 Try the Demo](https://colab.research.google.com/github/jayanth922/DriveSense-VLM/blob/main/notebooks/05_demo.ipynb) &nbsp;|&nbsp;
+[🤗 HuggingFace Model](https://huggingface.co/jayanth922/DriveSense-VLM) &nbsp;|&nbsp;
 [📊 W&B Dashboard](https://wandb.ai/drivesense-vlm) &nbsp;|&nbsp;
 [📄 Model Card](MODEL_CARD.md)
+
+---
+
+## Quick start
+
+```bash
+pip install transformers accelerate bitsandbytes Pillow torch
+```
+
+```python
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from PIL import Image
+import torch
+
+REPO = "jayanth922/DriveSense-VLM"
+
+processor = AutoProcessor.from_pretrained(REPO)
+model = AutoModelForImageTextToText.from_pretrained(
+    REPO, device_map="auto", torch_dtype=torch.bfloat16,
+)
+model.eval()
+
+PROMPT = (
+    "Analyze this dashcam image for safety hazards. Return JSON with hazards array "
+    "containing bbox_2d (normalized 0-1000), label, severity (low/medium/high/critical), "
+    "reasoning, and action for each hazard. Include scene_summary and ego_context."
+)
+
+image    = Image.open("dashcam.jpg").convert("RGB")
+messages = [{"role": "user", "content": [
+    {"type": "image", "image": image}, {"type": "text", "text": PROMPT},
+]}]
+text     = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+inputs   = processor(text=[text], images=[image], return_tensors="pt").to("cuda")
+
+with torch.no_grad():
+    out = model.generate(**inputs, max_new_tokens=300, do_sample=False)
+
+print(processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True))
+```
+
+### Headline metrics
+
+| Metric | Value |
+|---|---|
+| Parse rate (valid JSON)   | **99.1%** |
+| Mean IoU                  | **0.550** |
+| Severity classification   | **82.9%** |
+| F1 (hazard detection)     | 0.107 |
+| Compression vs. fp16      | **3.1×** |
+| VRAM reduction            | **68%** |
+| `torch.compile` speedup   | **1.48×** |
 
 ---
 
