@@ -53,17 +53,30 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create the Space as private (default: public).",
     )
+    p.add_argument(
+        "--factory-reboot",
+        action="store_true",
+        help="Trigger a factory reboot after upload (wipes the build cache).",
+    )
     return p.parse_args()
 
 
-def deploy(token: str, space_id: str, space_dir: Path, private: bool) -> str:
-    """Create (if needed) and upload to the target Space.
+def deploy(
+    token: str,
+    space_id: str,
+    space_dir: Path,
+    private: bool,
+    factory_reboot: bool = False,
+) -> str:
+    """Create (if needed), upload to, and optionally factory-reboot the Space.
 
     Args:
-        token:     HuggingFace write token.
-        space_id:  Target Space repo id (``user/name``).
-        space_dir: Local directory whose contents are uploaded.
-        private:   Whether to create the Space as private.
+        token:          HuggingFace write token.
+        space_id:       Target Space repo id (``user/name``).
+        space_dir:      Local directory whose contents are uploaded.
+        private:        Whether to create the Space as private.
+        factory_reboot: If True, request a factory reboot after the upload so
+            the build runs from a clean cache (fixes stuck/broken builds).
 
     Returns:
         The URL of the deployed Space.
@@ -84,6 +97,9 @@ def deploy(token: str, space_id: str, space_dir: Path, private: bool) -> str:
         repo_type="space",
         commit_message="Deploy DriveSense-VLM demo",
     )
+    if factory_reboot:
+        print("Requesting factory reboot …")
+        api.restart_space(repo_id=space_id, factory_reboot=True)
     return f"https://huggingface.co/spaces/{space_id}"
 
 
@@ -107,7 +123,9 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Deploying {space_dir} → space '{args.space_id}' …")
-    url = deploy(args.token, args.space_id, space_dir, args.private)
+    url = deploy(
+        args.token, args.space_id, space_dir, args.private, args.factory_reboot
+    )
     print(f"✓ Deployed: {url}")
 
 

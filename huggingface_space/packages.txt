@@ -1,0 +1,3 @@
+# System (apt) packages for the HF Space build.
+# Intentionally empty — HF Spaces GPU (T4) images already ship CUDA runtime
+# and the libGL/libglib deps Pillow needs. Add one package per line if required.
