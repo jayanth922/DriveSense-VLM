@@ -1,16 +1,10 @@
-"""DriveSense-VLM Gradio Demo — HuggingFace Spaces (standalone).
+"""DriveSense-VLM — HuggingFace Spaces app.
 
-Standalone Gradio app for HF Spaces deployment. Does NOT depend on the
-repo's src/ package — all inference logic is inlined here.
+Standalone Gradio app that loads the published model from the HuggingFace Hub
+(``jayanth7111/DriveSense-VLM``) and serves an interactive hazard-detection demo.
 
-Hardware target: Free T4 GPU on HuggingFace Spaces.
-
-Usage (local):
-    MODEL_PATH=./model python demo/app.py
-
-Usage (HF Spaces):
-    Push this file to a HuggingFace Space with gradio as the SDK.
-    Set Space hardware to T4 Small (free tier).
+Deploy by pushing this directory (app.py + requirements.txt + README.md) to a
+HuggingFace Space with the Gradio SDK. Set the Space hardware to T4 Small.
 """
 
 from __future__ import annotations
@@ -38,15 +32,15 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 # Paths and constants
 # ---------------------------------------------------------------------------
 
-DEMO_DIR = Path(__file__).parent
-EXAMPLES_DIR = DEMO_DIR / "examples"
+APP_DIR = Path(__file__).parent
+EXAMPLES_DIR = APP_DIR / "examples"
 EXAMPLES_DIR.mkdir(exist_ok=True)
 
-MODEL_PATH = os.environ.get("MODEL_PATH", "./model")
-PROCESSOR_PATH = os.environ.get("PROCESSOR_PATH", MODEL_PATH)
+# Published model + processor live in one HF Hub repo.
+MODEL_REPO = os.environ.get("MODEL_REPO", "jayanth7111/DriveSense-VLM")
+PROCESSOR_REPO = os.environ.get("PROCESSOR_REPO", MODEL_REPO)
 
-# Default generation budget — 200 tokens is enough for full structured output
-# while being noticeably faster than 300.
+# 200 tokens is enough for full structured output and faster than 300.
 DEFAULT_MAX_TOKENS = 200
 
 PROMPT = (
@@ -56,8 +50,7 @@ PROMPT = (
     "(weather, time_of_day, road_type)."
 )
 
-# Legacy RGB palette — kept for backwards compatibility (and unit tests).
-# Used as a fallback by the box renderer when a hex colour is unavailable.
+# Legacy RGB palette — kept as a fallback for the box renderer.
 SEVERITY_COLORS: dict[str, tuple[int, int, int]] = {
     "critical": (255, 0, 0),
     "high": (255, 140, 0),
@@ -84,7 +77,7 @@ _processor: object = None
 
 
 def _load_model() -> object:
-    """Lazy-load model and processor on first call. Returns model or None."""
+    """Lazy-load model and processor from the HF Hub. Returns model or None."""
     global _model, _processor  # noqa: PLW0603
     if _model is not None:
         return _model
@@ -94,16 +87,16 @@ def _load_model() -> object:
             AutoModelForImageTextToText,
             AutoProcessor,
         )
-        logger.info("Loading model from %s …", MODEL_PATH)
-        _processor = AutoProcessor.from_pretrained(PROCESSOR_PATH)
+        logger.info("Loading model from HF Hub: %s …", MODEL_REPO)
+        _processor = AutoProcessor.from_pretrained(PROCESSOR_REPO)
         _model = AutoModelForImageTextToText.from_pretrained(
-            MODEL_PATH,
+            MODEL_REPO,
             device_map="auto",
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
         )
         _model.eval()  # type: ignore[union-attr]
-        logger.info("Model loaded")
+        logger.info("Model loaded from %s", MODEL_REPO)
     except Exception as exc:  # noqa: BLE001
         logger.error("Model load failed: %s", exc)
         _model = None
@@ -133,14 +126,7 @@ def _severity_rgb(severity: str) -> tuple[int, int, int]:
 
 
 def _format_latency(ms: float) -> str:
-    """Format a millisecond latency, switching to seconds above 1000 ms.
-
-    Args:
-        ms: Latency in milliseconds.
-
-    Returns:
-        ``"12.3s"`` for values >= 1000 ms, otherwise ``"850 ms"``.
-    """
+    """Format a millisecond latency, switching to seconds above 1000 ms."""
     if ms >= 1000:
         return f"{ms / 1000:.1f}s"
     return f"{ms:.0f} ms"
@@ -190,11 +176,7 @@ def _text_size(draw: ImageDraw.ImageDraw, text: str, font: object) -> tuple[int,
 
 
 def draw_hazard_boxes(image: Image.Image, annotation: dict) -> Image.Image:
-    """Overlay severity-coded bounding boxes on a copy of the image.
-
-    Boxes are drawn directly on a full-brightness copy of the input (no
-    translucent wash). Each box has a thick outline and a solid label
-    background so the text stays readable.
+    """Overlay severity-coded bounding boxes on a full-brightness image copy.
 
     Args:
         image:      Input PIL Image.
@@ -235,17 +217,7 @@ def draw_hazard_boxes(image: Image.Image, annotation: dict) -> Image.Image:
 
 
 def _run_model(image: Image.Image, max_tokens: int) -> tuple[dict, float]:
-    """Run inference and return ``(annotation, latency_ms)``.
-
-    Falls back to a placeholder annotation when the model is unavailable.
-
-    Args:
-        image:      Input PIL Image.
-        max_tokens: Maximum new tokens to generate.
-
-    Returns:
-        Tuple of (parsed annotation dict, latency in milliseconds).
-    """
+    """Run inference and return ``(annotation, latency_ms)``."""
     model = _load_model()
     if model is None or _processor is None:
         return _make_placeholder_result(), 0.0
@@ -339,9 +311,8 @@ def _hazard_card(hazard: dict) -> str:
     action = str(hazard.get("action", "") or "—")
 
     return f"""
-<div style="border-left:5px solid {color};border:1px solid #e2e8f0;
-            border-left:5px solid {color};border-radius:10px;padding:12px 14px;
-            margin-bottom:10px;background:#fff;">
+<div style="border:1px solid #e2e8f0;border-left:5px solid {color};
+            border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff;">
   <div style="display:flex;align-items:center;justify-content:space-between;
               margin-bottom:6px;">
     <span style="font-size:15px;font-weight:700;color:{color};">
@@ -386,15 +357,7 @@ def analyze_image(
     image: Image.Image | None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> tuple[Image.Image | None, str, str]:
-    """Run hazard detection (back-compat 3-tuple API).
-
-    Args:
-        image:      Input PIL Image from Gradio.
-        max_tokens: Maximum new tokens for generation.
-
-    Returns:
-        Tuple of (annotated_image, json_str, status_str).
-    """
+    """Run hazard detection (back-compat 3-tuple API)."""
     if image is None:
         return None, "Please upload a dashcam image.", "—"
     try:
@@ -405,8 +368,7 @@ def analyze_image(
 
     annotated = draw_hazard_boxes(image, annotation)
     n = len(annotation.get("hazards", []))
-    status = f"✓ {n} hazard(s) | {_format_latency(ms)}"
-    return annotated, json.dumps(annotation, indent=2), status
+    return annotated, json.dumps(annotation, indent=2), f"✓ {n} hazard(s) | {_format_latency(ms)}"
 
 
 def analyze(
@@ -414,10 +376,6 @@ def analyze(
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> tuple[Image.Image | None, str, str, str]:
     """Run hazard detection for the rich Gradio UI.
-
-    Args:
-        image:      Input PIL Image from Gradio.
-        max_tokens: Maximum new tokens for generation.
 
     Returns:
         Tuple of (annotated_image, summary_html, hazards_html, json_str).
@@ -465,7 +423,7 @@ def _make_placeholder_result() -> dict:
 
 
 def _get_example_images() -> list[list]:
-    """Collect up to 6 example images from demo/examples/."""
+    """Collect up to 6 example images from the examples/ directory."""
     exts = {".jpg", ".jpeg", ".png"}
     paths = [p for p in sorted(EXAMPLES_DIR.iterdir()) if p.suffix.lower() in exts]
     return [[str(p)] for p in paths[:6]]
@@ -490,9 +448,6 @@ DESCRIPTION = (
 
 def create_demo() -> object:
     """Build and return the Gradio Blocks interface.
-
-    Returns:
-        gr.Blocks instance.
 
     Raises:
         ImportError: If gradio is not installed.
@@ -533,12 +488,7 @@ def create_demo() -> object:
     return demo
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     if not _GRADIO_AVAILABLE:
         raise SystemExit("gradio not installed. Run: pip install gradio>=4.0")
-    app = create_demo()
-    app.launch(server_port=7860, share=False)
+    create_demo().launch()
