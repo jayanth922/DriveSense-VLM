@@ -21,10 +21,69 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = _REPO_ROOT / "src"
+_SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))  # allow importing run_generate_predictions
 
 from drivesense.utils.config import load_config, merge_configs  # noqa: E402
+
+# Stratification fields Level-4 robustness needs; enforced before any eval runs.
+_STRAT_FIELDS = ("time_of_day", "weather", "location")
+
+
+def assert_stratification_metadata(gt_path: Path) -> None:
+    """Abort if the ground-truth file lacks per-record stratification metadata.
+
+    Level-4 robustness stratifies by time_of_day / weather / location. Running it
+    against a metadata-less file (e.g. plain sft_test.jsonl) silently produces
+    all-zero robustness metrics. This makes that impossible: every record must
+    expose all three fields (top-level, or under ``metadata`` / ``ego_context``).
+
+    Args:
+        gt_path: Path to the ground-truth JSONL/JSON.
+    """
+    if not gt_path.exists():
+        logger.error("Ground-truth file not found: %s", gt_path)
+        sys.exit(1)
+    records = _read_gt_records(gt_path)
+    if not records:
+        logger.error("Ground-truth file is empty or unreadable: %s", gt_path)
+        sys.exit(1)
+    missing = [i for i, r in enumerate(records) if not _record_has_stratification(r)]
+    if missing:
+        logger.error(
+            "Ground-truth file '%s' lacks stratification metadata (%s) on %d/%d "
+            "records (first missing at index %d). Robustness/stratified eval would "
+            "silently produce all-zero metrics. Use sft_test_enriched.jsonl.",
+            gt_path, ", ".join(_STRAT_FIELDS), len(missing), len(records), missing[0],
+        )
+        sys.exit(1)
+    logger.info(
+        "GT stratification check OK: %d records, all expose (%s).",
+        len(records), ", ".join(_STRAT_FIELDS),
+    )
+
+
+def _record_has_stratification(rec: dict) -> bool:
+    """True if the record exposes all stratification fields somewhere sensible."""
+    md = rec.get("metadata") if isinstance(rec.get("metadata"), dict) else {}
+    ego = rec.get("ego_context") if isinstance(rec.get("ego_context"), dict) else {}
+    return all((f in rec) or (f in md) or (f in ego) for f in _STRAT_FIELDS)
+
+
+def _read_gt_records(gt_path: Path) -> list[dict]:
+    """Read a JSONL (one object per line) or JSON-array ground-truth file."""
+    text = gt_path.read_text(encoding="utf-8").strip()
+    if text.startswith("["):
+        return [r for r in json.loads(text) if isinstance(r, dict)]
+    out: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            out.append(json.loads(line))
+    return out
 
 logging.basicConfig(
     level=logging.INFO,
@@ -126,8 +185,13 @@ def generate_predictions(config: dict, mock: bool = False) -> Path:
     if mock:
         model, processor = _create_mock_model_processor()
     else:
-        from drivesense.training.sft_trainer import setup_model_and_processor
-        model, processor, _ = setup_model_and_processor(config)
+        # Load a REAL fine-tuned checkpoint (never get_peft_model / zero-init LoRA).
+        import run_generate_predictions as _rgp
+        model, processor, load_via = _rgp.setup_model(
+            config, model_path=None, adapter_path=None, mock=False
+        )
+        _rgp.assert_real_finetuned(model, load_via)
+        logger.info("Model load route: %s", load_via)
 
     gt_evaluator = GroundingEvaluator(config)
     gt_list = gt_evaluator.load_ground_truth(test_path)
@@ -369,9 +433,12 @@ def main() -> None:
     ground_truth_path = Path(
         args.ground_truth
         or config.get("eval_data", {}).get(
-            "ground_truth_path", "outputs/data/sft_ready/sft_test.jsonl"
+            "ground_truth_path", "outputs/data/sft_ready/sft_test_enriched.jsonl"
         )
     )
+
+    # Fix 3: refuse to evaluate against a GT file missing stratification metadata.
+    assert_stratification_metadata(ground_truth_path)
 
     levels = set(args.level)
     all_metrics: dict[str, dict] = {}

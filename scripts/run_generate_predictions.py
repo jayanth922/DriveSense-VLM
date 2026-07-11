@@ -5,7 +5,12 @@ Usage:
     python scripts/run_generate_predictions.py
     python scripts/run_generate_predictions.py --split test
     python scripts/run_generate_predictions.py --split val
-    python scripts/run_generate_predictions.py --adapter-path outputs/training/checkpoint-best
+    # Eval the deployed fine-tuned model (default: outputs/quantized_model):
+    python scripts/run_generate_predictions.py --split test \
+        --model-path jayanth7111/DriveSense-VLM \
+        --ground-truth outputs/data/sft_ready/sft_test_enriched.jsonl
+    # Or load a raw LoRA adapter on top of the base model:
+    python scripts/run_generate_predictions.py --adapter-path outputs/training/lora_adapter
     python scripts/run_generate_predictions.py --mock
 """
 
@@ -52,9 +57,29 @@ def parse_args() -> argparse.Namespace:
         help="Dataset split to run inference on",
     )
     p.add_argument(
+        "--model-path",
+        default=None,
+        help=(
+            "Path or HF repo of a COMPLETE fine-tuned checkpoint to evaluate "
+            "(e.g. outputs/quantized_model or jayanth7111/DriveSense-VLM). "
+            "This is the default eval route; loaded directly via from_pretrained."
+        ),
+    )
+    p.add_argument(
         "--adapter-path",
         default=None,
-        help="Path to LoRA adapter (overrides config default)",
+        help=(
+            "Path to a trained LoRA adapter to load on top of the base model "
+            "(fallback route; only used when --model-path is not given)."
+        ),
+    )
+    p.add_argument(
+        "--ground-truth",
+        default=None,
+        help=(
+            "Path to the split JSONL to run inference on (overrides the default "
+            "sft_<split>.jsonl). Use sft_test_enriched.jsonl for the trustworthy run."
+        ),
     )
     p.add_argument(
         "--output",
@@ -85,22 +110,29 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-def load_split_data(config: dict, split: str) -> list[dict]:
+def load_split_data(
+    config: dict, split: str, ground_truth: str | None = None
+) -> list[dict]:
     """Load ground truth records for the given split.
 
     Args:
-        config: Merged config dict.
-        split:  ``"test"`` or ``"val"``.
+        config:       Merged config dict.
+        split:        ``"test"`` or ``"val"``.
+        ground_truth: Optional explicit path to the split JSONL (e.g. the
+                      enriched test file); overrides the default sft_<split>.jsonl.
 
     Returns:
         List of GT records with at minimum ``frame_id``.
     """
-    sft_dir = Path(
-        config.get("annotation", {}).get(
-            "sft_output_dir", "outputs/data/sft_ready"
+    if ground_truth:
+        split_file = Path(ground_truth)
+    else:
+        sft_dir = Path(
+            config.get("annotation", {}).get(
+                "sft_output_dir", "outputs/data/sft_ready"
+            )
         )
-    )
-    split_file = sft_dir / f"sft_{split}.jsonl"
+        split_file = sft_dir / f"sft_{split}.jsonl"
     if not split_file.exists():
         logger.error("Split file not found: %s", split_file)
         logger.info("Run the annotation pipeline first: python scripts/run_annotation_pipeline.py")
@@ -117,35 +149,180 @@ def load_split_data(config: dict, split: str) -> list[dict]:
     return records
 
 
-def setup_model(config: dict, adapter_path: str | None, mock: bool) -> tuple:
-    """Load the model and processor for inference.
+# Default eval target: the deployed, fine-tuned NF4 checkpoint (per project decision).
+_DEFAULT_EVAL_CHECKPOINT = "outputs/quantized_model"
+
+
+def resolve_eval_checkpoint(config: dict, model_path: str | None) -> str:
+    """Resolve the fine-tuned checkpoint to evaluate.
+
+    Precedence: ``--model-path`` → ``config['model']['eval_checkpoint']`` →
+    ``outputs/quantized_model``.
+
+    Args:
+        config:     Merged config dict.
+        model_path: CLI override (path or HF repo id).
+
+    Returns:
+        The resolved checkpoint path/repo id string.
+    """
+    return (
+        model_path
+        or config.get("model", {}).get("eval_checkpoint")
+        or _DEFAULT_EVAL_CHECKPOINT
+    )
+
+
+def setup_model(
+    config: dict,
+    model_path: str | None,
+    adapter_path: str | None,
+    mock: bool,
+) -> tuple:
+    """Load the model + processor for inference and report which path was used.
+
+    This deliberately does NOT go through ``setup_model_and_processor`` /
+    ``get_peft_model`` — that would attach a fresh, *untrained* LoRA and silently
+    evaluate the base model. Instead it loads a real fine-tuned checkpoint:
+
+    - ``--model-path`` (default route): a complete fine-tuned model loaded via
+      ``AutoModelForImageTextToText.from_pretrained`` (e.g. the NF4 quantized model).
+    - ``--adapter-path`` (fallback, only when no ``--model-path``): base model +
+      ``PeftModel.from_pretrained(base, adapter)``.
 
     Args:
         config:       Merged config dict.
-        adapter_path: Optional LoRA adapter path override.
-        mock:         Use tiny mock model instead.
+        model_path:   Complete fine-tuned checkpoint path/repo (preferred).
+        adapter_path: LoRA adapter path (fallback route).
+        mock:         Use the tiny mock model instead.
 
     Returns:
-        ``(model, processor)`` tuple.
+        ``(model, processor, load_via)`` where ``load_via`` records the route
+        taken (``"mock"`` / ``"adapter"`` / ``"checkpoint:<path>"``).
     """
     if mock:
-        return _create_mock_model_processor()
+        model, processor = _create_mock_model_processor()
+        return model, processor, "mock"
 
+    # Adapter route only when explicitly requested and no full checkpoint given.
+    if adapter_path and not model_path:
+        model, processor = _load_adapter_model(config, adapter_path)
+        return model, processor, "adapter"
+
+    resolved = resolve_eval_checkpoint(config, model_path)
+    model, processor = _load_checkpoint_model(resolved)
+    return model, processor, f"checkpoint:{resolved}"
+
+
+def _load_checkpoint_model(model_path: str) -> tuple:
+    """Load a complete fine-tuned model via from_pretrained (no get_peft_model)."""
     try:
-        from drivesense.training.sft_trainer import setup_model_and_processor
+        from transformers import AutoModelForImageTextToText, AutoProcessor
     except ImportError as exc:
+        logger.error("transformers not installed: %s\nInstall: pip install -e '.[training]'", exc)
+        sys.exit(1)
+
+    local = Path(model_path)
+    if not local.exists() and "/" not in str(model_path):
         logger.error(
-            "Training deps not installed: %s\n"
-            "Install: pip install -e '.[training]'",
-            exc,
+            "Eval checkpoint '%s' is neither a local dir nor an HF repo id. "
+            "Pass --model-path (e.g. outputs/quantized_model or jayanth7111/DriveSense-VLM).",
+            model_path,
         )
         sys.exit(1)
 
-    if adapter_path:
-        config.setdefault("model", {})["adapter_path"] = adapter_path
-
-    model, processor, _ = setup_model_and_processor(config)
+    logger.info("Loading fine-tuned checkpoint (complete model): %s", model_path)
+    model = AutoModelForImageTextToText.from_pretrained(
+        str(model_path), device_map="auto", torch_dtype="auto", trust_remote_code=True
+    )
+    processor = AutoProcessor.from_pretrained(str(model_path))
     return model, processor
+
+
+def _load_adapter_model(config: dict, adapter_path: str) -> tuple:
+    """Load base + PeftModel.from_pretrained(base, adapter) (fallback route)."""
+    try:
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+        from peft import PeftModel
+    except ImportError as exc:
+        logger.error("transformers/peft not installed: %s\nInstall: pip install -e '.[training]'", exc)
+        sys.exit(1)
+
+    base_name = config.get("model", {}).get("name", "Qwen/Qwen2.5-VL-3B-Instruct")
+    if not Path(adapter_path).exists():
+        logger.error("Adapter path not found: %s", adapter_path)
+        sys.exit(1)
+
+    logger.info("Loading base %s + LoRA adapter %s", base_name, adapter_path)
+    base = AutoModelForImageTextToText.from_pretrained(
+        base_name, device_map="auto", torch_dtype="auto", trust_remote_code=True
+    )
+    model = PeftModel.from_pretrained(base, str(adapter_path))
+    processor = AutoProcessor.from_pretrained(base_name)
+    return model, processor
+
+
+def assert_real_finetuned(model: object, load_via: str) -> None:
+    """Fail loudly if the loaded model is not a real fine-tune.
+
+    Guarantees the old bug (base model + fresh zero-init LoRA from get_peft_model)
+    can never be evaluated silently:
+
+    - ``adapter`` route: at least one ``lora_B`` weight must be non-zero (a trained
+      adapter), otherwise it is an untrained/zero-init LoRA → abort.
+    - ``checkpoint`` route: a complete fine-tuned model; if it happens to still be a
+      PEFT wrapper, its LoRA must also be non-zero.
+
+    Args:
+        model:    The loaded model.
+        load_via: Route string from :func:`setup_model`.
+    """
+    if load_via == "mock":
+        return
+    if load_via == "adapter":
+        _assert_nonzero_lora(model, require_lora=True)
+        logger.info("Load check OK: trained LoRA adapter (non-zero lora_B).")
+        return
+    if load_via.startswith("checkpoint"):
+        _assert_nonzero_lora(model, require_lora=False)
+        logger.info("Load check OK: fine-tuned checkpoint via from_pretrained (%s).", load_via)
+        return
+    logger.error("Unknown model load route '%s' — refusing to evaluate.", load_via)
+    sys.exit(1)
+
+
+def _assert_nonzero_lora(model: object, require_lora: bool) -> None:
+    """Assert any LoRA present has non-zero lora_B; the zero-init trap aborts."""
+    lora_b = []
+    try:
+        for name, param in model.named_parameters():  # type: ignore[union-attr]
+            if "lora_B" in name:
+                lora_b.append(param)
+    except Exception:  # noqa: BLE001
+        lora_b = []
+
+    if not lora_b:
+        if require_lora:
+            logger.error(
+                "ADAPTER LOAD FAILED: no LoRA layers found on the model — the adapter "
+                "did not attach. Eval would score the base model. Aborting."
+            )
+            sys.exit(1)
+        return  # checkpoint route: a merged/quantized model legitimately has no LoRA
+
+    total = 0.0
+    for param in lora_b:
+        try:
+            total += float(param.detach().float().abs().sum().item())
+        except Exception:  # noqa: BLE001
+            total += 1.0  # non-inspectable → assume real rather than false-abort
+    if total == 0.0:
+        logger.error(
+            "ZERO-INIT LORA DETECTED: every lora_B weight is exactly 0.0. This is an "
+            "untrained adapter (get_peft_model) — eval would score the BASE model, not the "
+            "fine-tune. Aborting. Pass --model-path to a real fine-tuned checkpoint."
+        )
+        sys.exit(1)
 
 
 def run_inference(
@@ -382,8 +559,12 @@ def main() -> None:
 
     logger.info("Split: %s  |  Output: %s  |  Mock: %s", args.split, output_path, args.mock)
 
-    records = load_split_data(config, args.split)
-    model, processor = setup_model(config, args.adapter_path, args.mock)
+    records = load_split_data(config, args.split, args.ground_truth)
+    model, processor, load_via = setup_model(
+        config, args.model_path, args.adapter_path, args.mock
+    )
+    assert_real_finetuned(model, load_via)
+    logger.info("Model load route: %s", load_via)
 
     summary = run_inference(
         model=model,
@@ -392,6 +573,9 @@ def main() -> None:
         output_path=output_path,
         max_new_tokens=max_new_tokens,
     )
+    summary["model_load_route"] = load_via
+    summary["ground_truth_file"] = str(args.ground_truth) if args.ground_truth else \
+        f"sft_{args.split}.jsonl (default)"
 
     print("\n--- Prediction Generation Summary ---")
     print(json.dumps(summary, indent=2))

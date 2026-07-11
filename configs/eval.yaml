@@ -91,7 +91,11 @@ robustness:
 # -----------------------------------------------------------------------------
 eval_data:
   predictions_path: "outputs/predictions/test_predictions.jsonl"
-  ground_truth_path: "outputs/data/sft_ready/sft_test.jsonl"
+  # Enriched GT carries per-record stratification metadata (time_of_day/weather/
+  # location) required for Level-4 robustness. Plain sft_test.jsonl lacks it and
+  # would silently yield all-zero robustness metrics — override with --ground-truth
+  # only if you know you need the non-enriched file.
+  ground_truth_path: "outputs/data/sft_ready/sft_test_enriched.jsonl"
 
 # -----------------------------------------------------------------------------
 # Prediction Generation Config
