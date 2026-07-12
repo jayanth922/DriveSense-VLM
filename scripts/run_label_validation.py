@@ -161,7 +161,10 @@ def evaluate_gate(stats: dict, args: argparse.Namespace) -> list[str]:
         failures.append(
             f"unique_box_ratio {stats['unique_box_ratio']} < {args.min_unique_ratio}"
         )
-    if stats["max_single_box_freq"] > args.max_single_box_freq:
+    # A box appearing exactly once is never collapse — on a small split 1/N can
+    # exceed the ratio threshold while every box is still unique. Only flag an
+    # ACTUAL repeat (top box seen >= 2 times).
+    if stats["top_box_count"] > 1 and stats["max_single_box_freq"] > args.max_single_box_freq:
         failures.append(
             f"max_single_box_freq {stats['max_single_box_freq']} > "
             f"{args.max_single_box_freq} (box {stats['top_box']} ×{stats['top_box_count']})"

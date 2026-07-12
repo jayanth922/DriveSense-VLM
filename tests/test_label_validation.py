@@ -34,6 +34,19 @@ class TestGatePasses:
         assert stats["total_boxes"] == 50
         assert gate.evaluate_gate(stats, _args()) == []
 
+    def test_small_all_unique_split_passes(self) -> None:
+        # 8 unique boxes (a tiny val/test split): 1/8 = 0.125 must NOT fail,
+        # because every box appears exactly once (top_box_count == 1).
+        records = [
+            _rec(f"f{i}", [{"label": "occluded_pedestrian", "bbox_2d": [i, i, i + 30, i + 80]}])
+            for i in range(8)
+        ]
+        stats = gate.collect_stats(records)
+        assert stats["unique_box_ratio"] == 1.0
+        assert stats["top_box_count"] == 1
+        assert stats["max_single_box_freq"] == 0.125  # 1/8
+        assert gate.evaluate_gate(stats, _args()) == []  # passes despite 0.125 > 0.02
+
     def test_high_density_box_exempt_ignored(self) -> None:
         records = [
             _rec("f1", [{"label": "high_density"}]),  # no bbox, legitimately
