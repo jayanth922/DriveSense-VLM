@@ -89,25 +89,25 @@ _SAMPLES = {
 _ANN_PED_001 = {
     "token": "ann_ped_001", "category_name": "human.pedestrian.adult",
     "translation": [0.5, 0.5, 0.0], "size": [0.7, 0.7, 1.7],
-    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "vis_1",
+    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "1",
     "instance_token": "inst_001", "sample_token": "sample_001",
 }
 _ANN_PED_002 = {
     "token": "ann_ped_002", "category_name": "human.pedestrian.child",
     "translation": [3.0, 0.0, 0.0], "size": [0.5, 0.5, 1.2],
-    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "vis_4",
+    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "4",
     "instance_token": "inst_002", "sample_token": "sample_001",
 }
 _ANN_CAR_001 = {
     "token": "ann_car_001", "category_name": "vehicle.car",
     "translation": [20.0, 5.0, 0.0], "size": [1.9, 4.5, 1.6],
-    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "vis_4",
+    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "4",
     "instance_token": "inst_003", "sample_token": "sample_002",
 }
 _ANN_CYC_001 = {
     "token": "ann_cyc_001", "category_name": "vehicle.bicycle",
     "translation": [11.0, 10.0, 0.0], "size": [0.6, 1.5, 1.2],
-    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "vis_3",
+    "rotation": [1.0, 0.0, 0.0, 0.0], "visibility_token": "3",
     "instance_token": "inst_004", "sample_token": "sample_003",
 }
 
@@ -116,7 +116,7 @@ _CAR_ANNS = {
         "token": f"ann_car_{i:03d}", "category_name": "vehicle.car",
         "translation": [float(30 + i), float(i), 0.0],
         "size": [1.9, 4.5, 1.6], "rotation": [1.0, 0.0, 0.0, 0.0],
-        "visibility_token": "vis_4",
+        "visibility_token": "4",
         "instance_token": f"inst_car_{i:03d}", "sample_token": "sample_003",
     }
     for i in range(15)
@@ -131,9 +131,9 @@ _ANNOTATIONS = {
 }
 
 _VISIBILITY = {
-    "vis_1": {"token": "vis_1", "level": "1", "description": "0-40% visible"},
-    "vis_3": {"token": "vis_3", "level": "3", "description": "60-80% visible"},
-    "vis_4": {"token": "vis_4", "level": "4", "description": "80-100% visible"},
+    "1": {"token": "1", "level": "v0-40", "description": "visibility 0-40%"},
+    "3": {"token": "3", "level": "v60-80", "description": "visibility 60-80%"},
+    "4": {"token": "4", "level": "v80-100", "description": "visibility 80-100%"},
 }
 
 _EGO_POSES = {

@@ -135,12 +135,15 @@ class NuScenesMetadataExtractor:
     # ------------------------------------------------------------------
 
     def _visibility_level(self, ann_token: str) -> int:
-        """Return integer visibility level (1-4) for an annotation."""
+        """Return integer visibility level (1-4) for an annotation.
+
+        The level is the ``visibility_token`` ("1".."4"); the visibility record's
+        ``level`` field is a string like "v0-40" and must not be int()-cast.
+        """
         ann = self.nusc.get("sample_annotation", ann_token)
-        vis = self.nusc.get("visibility", ann["visibility_token"])
         try:
-            return int(vis.get("level", "4"))
-        except (ValueError, TypeError):
+            return int(ann["visibility_token"])
+        except (ValueError, TypeError, KeyError):
             return 4
 
     def _extract_sample(self, sample_token: str) -> dict:

@@ -142,8 +142,10 @@ class NuScenesRarityFilter:
         occluded: list[dict] = []
         for ann_token in sample["anns"]:
             ann = self.nusc.get("sample_annotation", ann_token)
-            vis = self.nusc.get("visibility", ann["visibility_token"])
-            level = str(vis.get("level", "4"))
+            # The integer level is the visibility_token ("1".."4"); the visibility
+            # record's `level` field is a string like "v0-40" and must not be used
+            # as the range key (doing so silently defaults to 80-100% = never occluded).
+            level = str(ann["visibility_token"])
             lo, hi = _VISIBILITY_RANGES.get(level, (80, 100))
             # Visibility range overlaps [occ_min, occ_max] → qualifies.
             if lo <= self._occ_max and hi >= self._occ_min:
