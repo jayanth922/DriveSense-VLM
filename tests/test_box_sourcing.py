@@ -14,7 +14,29 @@ from drivesense.data.box_sourcing import (  # noqa: E402
     box_reject_reason,
     filter_frame_boxes,
     nuscenes_category_to_hazard,
+    visibility_level_of,
 )
+
+
+class TestVisibilityLevel:
+    """The integer level lives in visibility_token, not the level string."""
+
+    def test_reads_visibility_token(self) -> None:
+        assert visibility_level_of({"visibility_token": "1"}) == 1
+        assert visibility_level_of({"visibility_token": "4"}) == 4
+
+    def test_ignores_level_string(self) -> None:
+        # A record whose token is "1" is occluded even though 'level' is "v0-40".
+        ann = {"visibility_token": "1", "level": "v0-40"}
+        assert visibility_level_of(ann) == 1
+
+    def test_missing_defaults_to_visible(self) -> None:
+        assert visibility_level_of({}) == 4
+
+    def test_occluded_pedestrian_end_to_end(self) -> None:
+        # The bug: token "1" must yield occluded_pedestrian, not jaywalking.
+        vl = visibility_level_of({"visibility_token": "1"})
+        assert nuscenes_category_to_hazard("human.pedestrian.adult", vl) == "occluded_pedestrian"
 
 
 class TestCategoryMapping:

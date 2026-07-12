@@ -74,6 +74,26 @@ def nuscenes_category_to_hazard(
     return None
 
 
+def visibility_level_of(ann: dict) -> int:
+    """Return the nuScenes visibility level (1-4) for an annotation.
+
+    The integer level is the ``visibility_token`` ("1".."4"). The visibility
+    record's ``level`` field is a STRING like ``"v0-40"`` and must never be
+    int()-cast — doing so silently falls back to 4 ("fully visible") and makes
+    ``occluded_pedestrian`` impossible to produce.
+
+    Args:
+        ann: A nuScenes ``sample_annotation`` record.
+
+    Returns:
+        Visibility level 1 (0-40%) through 4 (80-100%); 4 if unknown.
+    """
+    try:
+        return int(ann.get("visibility_token", "4"))
+    except (ValueError, TypeError):
+        return 4
+
+
 def box_reject_reason(bbox: list[float]) -> str | None:
     """Return why a box should be rejected, or ``None`` if it passes.
 
@@ -162,11 +182,7 @@ def source_boxes_for_frame(
     candidates: list[dict] = []
     for ann_token in sample["anns"]:
         ann = nusc.get("sample_annotation", ann_token)
-        vis = nusc.get("visibility", ann["visibility_token"])
-        try:
-            vis_level = int(vis.get("level", "4"))
-        except (ValueError, TypeError):
-            vis_level = 4
+        vis_level = visibility_level_of(ann)  # reads visibility_token, not level string
         label = nuscenes_category_to_hazard(ann["category_name"], vis_level)
         if label is None:
             continue
