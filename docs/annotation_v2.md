@@ -101,9 +101,11 @@ metrics) and scored by **frame-level presence** (precision/recall) instead.
 2. ✅ Wire `get_2d_bbox_from_3d` into box sourcing for GT classes.
 3. ✅ Hard box filter + reject log.
 4. ✅ Validation gate script (fails the build on the criteria above).
-5. ⏳ **50-frame proof** on v1.0-trainval (CPU) — passed for diversity; frustum
-   fix added, re-verification of recovered close pedestrians pending approval.
-6. ⏭ Full regeneration → gate must pass → retrain. **Not started; needs approval.**
+5. ✅ **50-frame proof** on v1.0-trainval (CPU): 0.9955 diversity, all classes
+   present, projection verified sound (occluded peds correctly captured; the 82
+   dropped are out-of-FOV, not lost). Two bugs found + fixed (visibility_token,
+   frustum clipping).
+6. ⏭ Full regeneration → gate must pass → retrain. **Approved to plan; not started.**
 
 ---
 
@@ -130,10 +132,16 @@ yet fixed.
 
 ### Bug found + fixed #2 — near-plane projection (frustum clipping)
 The original `get_2d_bbox_from_3d` dropped behind-camera corners and projected only
-the front ones, so boxes **straddling the camera plane** (the *closest*, highest-
-severity pedestrians) inverted/zeroed → the 82 `inverted_or_zero` above, ~20% of
-in-frame occluded peds. Fixed with proper **near-plane frustum clipping**
+the front ones. Fixed with proper **near-plane frustum clipping**
 (`transforms.project_box_to_2d`): each cuboid edge crossing `z = 0.1 m` is clipped
-at the plane before projection, yielding the correct visible 2D extent. Unit-tested
-for the straddling case (`tests/test_transforms.py`). Re-verification of the
-recovered boxes (landing on the person, not a frame-edge sliver) pending on Colab.
+at the plane before projection. Unit-tested (`tests/test_transforms.py`).
+
+**Re-verification finding (important correction):** the 82 `inverted_or_zero` were
+**not** close, straddling pedestrians. A targeted check showed all 82 are
+pedestrians in front of the camera but **outside the CAM_FRONT field of view**
+(off to the sides/above/below) — they project entirely off-screen and are
+*correctly* dropped; **0 were wrongly dropped** (`in_FOV_but_dropped = 0`). So the
+frustum clip is a **defensive correctness improvement, not a recovery**: the
+pipeline already captured every occluded pedestrian actually visible in CAM_FRONT
+(~88 of 400 vis-1 pedestrians; the rest are behind/beside the ego, i.e. not in the
+front camera). No close pedestrians were being lost.
