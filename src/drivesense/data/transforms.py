@@ -204,6 +204,66 @@ def normalize_bbox_to_1000(
     ]
 
 
+# Cuboid edges for nuScenes ``Box.corners()`` ordering (front face 0-3, back 4-7).
+_BOX_EDGES: tuple[tuple[int, int], ...] = (
+    (0, 1), (1, 2), (2, 3), (3, 0),
+    (4, 5), (5, 6), (6, 7), (7, 4),
+    (0, 4), (1, 5), (2, 6), (3, 7),
+)
+# Camera near plane (metres) in the camera frame; z is forward depth.
+_NEAR_PLANE = 0.1
+
+
+def project_box_to_2d(
+    corners: np.ndarray,
+    intrinsic: np.ndarray,
+    img_w: int,
+    img_h: int,
+    near: float = _NEAR_PLANE,
+) -> list[float] | None:
+    """Near-plane–clipped projection of a 3D box (camera frame) to a 2D bbox.
+
+    Clips the cuboid against the camera near plane BEFORE projecting: for each
+    edge that crosses the plane, the crossing point (at ``z == near``) is added
+    and the behind-camera corner dropped. This makes boxes that straddle the
+    plane (the closest objects) project to their correct visible 2D extent
+    instead of the degenerate / inverted box that projecting only the
+    front-facing corners produces.
+
+    Args:
+        corners:   (3, 8) box corners in the camera frame (z = forward depth),
+                   ordered as nuScenes ``Box.corners()``.
+        intrinsic: (3, 3) camera intrinsic matrix.
+        img_w:     Image width in pixels.
+        img_h:     Image height in pixels.
+        near:      Near-plane depth; corners/edges with ``z <= near`` are clipped.
+
+    Returns:
+        ``[x1, y1, x2, y2]`` in pixels (clipped to the image), or ``None`` if the
+        box is entirely behind the near plane or projects to zero area.
+    """
+    pts: list[np.ndarray] = [
+        corners[:, c] for c in range(corners.shape[1]) if corners[2, c] > near
+    ]
+    for a, b in _BOX_EDGES:
+        za, zb = corners[2, a], corners[2, b]
+        if (za > near) != (zb > near):  # edge crosses the near plane
+            t = (near - za) / (zb - za)
+            pts.append(corners[:, a] + t * (corners[:, b] - corners[:, a]))
+    if not pts:
+        return None
+
+    p = np.stack(pts, axis=1)          # (3, K)
+    proj = intrinsic @ p               # (3, K) pinhole projection
+    x = proj[0] / proj[2]
+    y = proj[1] / proj[2]
+    x1, x2 = float(np.clip(x.min(), 0, img_w)), float(np.clip(x.max(), 0, img_w))
+    y1, y2 = float(np.clip(y.min(), 0, img_h)), float(np.clip(y.max(), 0, img_h))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return [x1, y1, x2, y2]
+
+
 def get_2d_bbox_from_3d(
     nusc: object,
     annotation_token: str,
@@ -244,23 +304,18 @@ def get_2d_bbox_from_3d(
     box.translate(-np.array(cal["translation"]))
     box.rotate(Quaternion(cal["rotation"]).inverse)
 
-    # 8 corners in camera frame; shape (3, 8).
+    # 8 corners in camera frame (z = forward depth); clip against the near plane
+    # BEFORE projecting so straddling (very close) boxes don't invert/zero.
     corners: np.ndarray = box.corners()
-    valid_mask = corners[2, :] > 0  # keep only corners in front of camera
-    if not np.any(valid_mask):
-        return None
-
     intrinsic = np.array(cal["camera_intrinsic"])
-    pts = view_points(corners[:, valid_mask], intrinsic, normalize=True)  # (3, M)
-
     img_w: int = cam_data["width"]
     img_h: int = cam_data["height"]
-    x1 = float(np.clip(np.min(pts[0]), 0, img_w))
-    y1 = float(np.clip(np.min(pts[1]), 0, img_h))
-    x2 = float(np.clip(np.max(pts[0]), 0, img_w))
-    y2 = float(np.clip(np.max(pts[1]), 0, img_h))
 
-    return normalize_bbox_to_1000([x1, y1, x2, y2], img_w, img_h)
+    bbox = project_box_to_2d(corners, intrinsic, img_w, img_h)
+    if bbox is None:
+        return None
+
+    return normalize_bbox_to_1000(bbox, img_w, img_h)
 
 
 # ------------------------------------------------------------------

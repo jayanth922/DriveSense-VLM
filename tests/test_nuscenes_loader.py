@@ -571,26 +571,18 @@ class TestProjectionBehindCamera:
         }[(table, token)]
 
         mock_box = MagicMock()
-        # Corners in a neat cluster in front of the camera (z > 0).
+        # Realistic pedestrian-sized cuboid a few metres ahead (camera frame:
+        # z = forward depth). Projects to a tight box inside the 1600x900 frame.
         corners = np.array([
-            [700.0, 750.0, 700.0, 750.0, 700.0, 750.0, 700.0, 750.0],  # x
-            [350.0, 350.0, 400.0, 400.0, 350.0, 350.0, 400.0, 400.0],  # y
-            [5.0,   5.0,   5.0,   5.0,   6.0,   6.0,   6.0,   6.0],   # z > 0
+            [0.5,  0.5, -0.5, -0.5,  0.5,  0.5, -0.5, -0.5],  # x (metres)
+            [0.9, -0.9, -0.9,  0.9,  0.9, -0.9, -0.9,  0.9],  # y (metres)
+            [5.0,  5.0,  5.0,  5.0,  6.0,  6.0,  6.0,  6.0],  # z > 0 (forward)
         ])
         mock_box.corners.return_value = corners
         mock_nusc.get_box.return_value = mock_box
 
-        def mock_view_points(pts: np.ndarray, view: np.ndarray, normalize: bool) -> np.ndarray:
-            # Simple projection: divide x,y by z and apply intrinsic scale.
-            result = pts.copy()
-            if normalize:
-                result[0] = pts[0] / pts[2] * 1000 + 800
-                result[1] = pts[1] / pts[2] * 1000 + 450
-            return result
-
         with (
             patch("drivesense.data.transforms._NUSCENES_AVAILABLE", True),
-            patch("drivesense.data.transforms.view_points", side_effect=mock_view_points),
             patch("drivesense.data.transforms.Quaternion") as MockQ,
         ):
             MockQ.return_value.inverse = MagicMock()
@@ -599,8 +591,8 @@ class TestProjectionBehindCamera:
         assert result is not None
         assert len(result) == 4
         x1, y1, x2, y2 = result
-        assert 0 <= x1 <= x2 <= 1000
-        assert 0 <= y1 <= y2 <= 1000
+        assert 0 <= x1 < x2 <= 1000  # a real, non-degenerate box
+        assert 0 <= y1 < y2 <= 1000
 
     def test_raises_without_nuscenes(self) -> None:
         """ImportError is raised when nuScenes devkit is absent."""

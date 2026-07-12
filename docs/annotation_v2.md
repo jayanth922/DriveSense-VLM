@@ -97,9 +97,43 @@ metrics) and scored by **frame-level presence** (precision/recall) instead.
 
 ## Build order (each proven before the next)
 
-1. This doc.
-2. Wire `get_2d_bbox_from_3d` into box sourcing for GT classes.
-3. Hard box filter + reject log.
-4. Validation gate script (fails the build on the criteria above).
-5. **50-frame proof** (box-diversity stats + 5 visual overlays) — requires the
-   nuScenes `dataroot`; **no full regeneration / retrain until approved.**
+1. ✅ This doc.
+2. ✅ Wire `get_2d_bbox_from_3d` into box sourcing for GT classes.
+3. ✅ Hard box filter + reject log.
+4. ✅ Validation gate script (fails the build on the criteria above).
+5. ⏳ **50-frame proof** on v1.0-trainval (CPU) — passed for diversity; frustum
+   fix added, re-verification of recovered close pedestrians pending approval.
+6. ⏭ Full regeneration → gate must pass → retrain. **Not started; needs approval.**
+
+---
+
+## Step-5 proof results (nuScenes v1.0-trainval, Colab CPU)
+
+Ran the committed `source_boxes_for_frame` / `get_2d_bbox_from_3d` on real frames:
+
+- **Box diversity (representative 50 frames):** `unique_box_ratio = 0.9955`,
+  `max_single_box_freq = 0.009`, 223 boxes — vs the v1 labels' 0.33 / 0.16.
+  Zero boxes over 40% area. The collapse is gone.
+- **Per-class kept (50 frames w/ occluded peds):** jaywalking 97, construction_zone
+  75, high_density 44, occluded_pedestrian 28, cyclist_proximity 23, unusual_object 5.
+- **Occluded-pedestrian scan (401 vis-1 pedestrians):** 89 kept, 214
+  `none_behind_camera` (not in CAM_FRONT — correctly skipped), 82 `inverted_or_zero`,
+  16 `degenerate_tiny`.
+
+### Bug found + fixed #1 — visibility parsing
+`visibility.level` is a **string** (`"v0-40"`), not an int; `int(level)` fell back
+to 4 ("fully visible"), so **`occluded_pedestrian` was never produced** (every
+pedestrian became `jaywalking`). Fixed to read `visibility_token` ("1".."4") via
+`box_sourcing.visibility_level_of`. Same latent bug still exists in
+`nuscenes_loader.py` and `spark_pipeline.py` (rarity occlusion signal) — noted, not
+yet fixed.
+
+### Bug found + fixed #2 — near-plane projection (frustum clipping)
+The original `get_2d_bbox_from_3d` dropped behind-camera corners and projected only
+the front ones, so boxes **straddling the camera plane** (the *closest*, highest-
+severity pedestrians) inverted/zeroed → the 82 `inverted_or_zero` above, ~20% of
+in-frame occluded peds. Fixed with proper **near-plane frustum clipping**
+(`transforms.project_box_to_2d`): each cuboid edge crossing `z = 0.1 m` is clipped
+at the plane before projection, yielding the correct visible 2D extent. Unit-tested
+for the straddling case (`tests/test_transforms.py`). Re-verification of the
+recovered boxes (landing on the person, not a frame-edge sliver) pending on Colab.
