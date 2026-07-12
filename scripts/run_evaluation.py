@@ -85,6 +85,39 @@ def _read_gt_records(gt_path: Path) -> list[dict]:
             out.append(json.loads(line))
     return out
 
+
+def _assert_iou_not_all_zero(
+    metrics: dict, evaluator: object, pred_path: Path, gt_path: Path
+) -> None:
+    """Abort loudly if hazards exist on both sides but NO pair overlaps at all.
+
+    ``global_max_iou == 0`` while both prediction and GT hazard counts are > 0
+    means every pred×GT IoU computed to exactly zero — the signature of an
+    extraction/key/shape bug (boxes read through a wrong key). A genuinely weak
+    model still produces some positive IoUs, so this never fires on a real (if
+    low) result and can never mask an extraction bug as a clean all-zero report.
+
+    Args:
+        metrics:   Level-1 metrics dict from ``GroundingEvaluator.evaluate``.
+        evaluator: The evaluator (used to re-load a sample pred/GT hazard).
+        pred_path: Predictions JSONL path.
+        gt_path:   Ground-truth JSONL path.
+    """
+    n_pred = metrics.get("total_pred_hazards", 0)
+    n_gt = metrics.get("total_gt_hazards", 0)
+    if n_pred > 0 and n_gt > 0 and float(metrics.get("global_max_iou", 0.0)) == 0.0:
+        preds = evaluator.load_predictions(pred_path)  # type: ignore[attr-defined]
+        gts = evaluator.load_ground_truth(gt_path)  # type: ignore[attr-defined]
+        sample_pred = next((h for p in preds for h in p.get("hazards", [])), None)
+        sample_gt = next((h for g in gts for h in g.get("hazards", [])), None)
+        logger.error(
+            "ALL-ZERO-IoU ABORT: %d pred hazards and %d GT hazards loaded, but every "
+            "pred x GT IoU is exactly 0.0. This is an extraction/key/shape bug, not a "
+            "weak model. Sample pred hazard: %s | Sample GT hazard: %s",
+            n_pred, n_gt, json.dumps(sample_pred), json.dumps(sample_gt),
+        )
+        sys.exit(1)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
@@ -448,6 +481,7 @@ def main() -> None:
 
         evaluator = GroundingEvaluator(config)
         metrics = evaluator.evaluate(predictions_path, ground_truth_path)
+        _assert_iou_not_all_zero(metrics, evaluator, predictions_path, ground_truth_path)
         evaluator.generate_report(metrics, output_dir / "level1")
         evaluator.log_to_wandb(metrics)
         all_metrics["level1"] = metrics

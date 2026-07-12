@@ -47,12 +47,28 @@ except ImportError:
     _WANDB_AVAILABLE = False
 
 from drivesense.data.annotation import AnnotationValidator  # noqa: E402
+from drivesense.data.box_sourcing import BOX_EXEMPT_LABELS  # noqa: E402, I001
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 VALID_LABELS: list[str] = AnnotationValidator.VALID_LABELS
+
+# Trained hazard taxonomy (7 classes) used for the Level-1 per-class report.
+# AnnotationValidator.VALID_LABELS is intentionally broader — it also carries
+# counterfactual-only labels (adverse_weather, emergency_vehicle) used by the
+# annotation pipeline. The model was trained on, and the eval report should only
+# show, these 7 classes; the two extras have zero support in the test set.
+GROUNDING_LABELS: list[str] = [
+    "occluded_pedestrian",
+    "jaywalking",
+    "cyclist_proximity",
+    "construction_zone",
+    "high_density",
+    "unusual_object",
+    "no_hazard",
+]
 
 SEVERITY_TO_INT: dict[str, int] = {
     "low": 1,
@@ -202,8 +218,14 @@ def compute_grounding_metrics(
 
     tp = fp = fn = tn_frames = fp_no_hazard_frames = parse_failures = 0
     iou_values: list[float] = []
+    # Localization signal, independent of the 0.5 match threshold: the best
+    # pred×GT IoU per frame. Distinguishes "genuine but weak overlap" from
+    # "no overlap at all / extraction bug" (see global_max_iou below).
+    best_pair_ious: list[float] = []
+    global_max_iou: float = 0.0
     total_gt = total_pred = 0
     correct_labels = matched_count = 0
+    hd_tp = hd_fp = hd_fn = 0  # high_density (box-exempt): frame-level presence
 
     per_class: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
     confusion: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))  # type: ignore[assignment]
@@ -211,16 +233,28 @@ def compute_grounding_metrics(
     for pred in predictions:
         frame_id = pred.get("frame_id", "")
         gt = gt_by_frame.get(frame_id, {})
-        gt_hazards = _active_hazards(gt.get("hazards", []))
+        gt_all = gt.get("hazards", [])
+        gt_hazards = _box_hazards(gt_all)
+        gt_hd = _has_label(gt_all, "high_density")  # box-exempt → presence only
 
         if pred.get("parse_failure", False):
             parse_failures += 1
             fn += len(gt_hazards)
             for h in gt_hazards:
                 per_class[h.get("label", "")]["fn"] += 1
+            if gt_hd:
+                hd_fn += 1
             continue
 
-        pred_hazards = _active_hazards(pred.get("hazards", []))
+        pred_all = pred.get("hazards", [])
+        pred_hazards = _box_hazards(pred_all)
+        pred_hd = _has_label(pred_all, "high_density")
+        if gt_hd and pred_hd:
+            hd_tp += 1
+        elif pred_hd and not gt_hd:
+            hd_fp += 1
+        elif gt_hd and not pred_hd:
+            hd_fn += 1
         total_gt += len(gt_hazards)
         total_pred += len(pred_hazards)
 
@@ -244,6 +278,17 @@ def compute_grounding_metrics(
             for h in gt_hazards:
                 per_class[h.get("label", "")]["fn"] += 1
             continue
+
+        # Threshold-independent localization: best pred×GT IoU on this frame.
+        frame_best = 0.0
+        for _ph in pred_hazards:
+            for _gh in gt_hazards:
+                frame_best = max(frame_best, compute_iou(
+                    _ph.get("bbox_2d", [0, 0, 0, 0]),
+                    _gh.get("bbox_2d", [0, 0, 0, 0]),
+                ))
+        best_pair_ious.append(frame_best)
+        global_max_iou = max(global_max_iou, frame_best)
 
         result = match_predictions_to_ground_truth(pred_hazards, gt_hazards, iou_threshold)
 
@@ -280,8 +325,23 @@ def compute_grounding_metrics(
     n_preds = len(predictions)
     parse_failure_rate = parse_failures / n_preds if n_preds > 0 else 0.0
 
+    mean_best_iou = float(np.mean(best_pair_ious)) if best_pair_ious else 0.0
+
+    # Scene-level (box-exempt) presence scoring for high_density.
+    hd_precision = hd_tp / (hd_tp + hd_fp) if (hd_tp + hd_fp) > 0 else 0.0
+    hd_recall = hd_tp / (hd_tp + hd_fn) if (hd_tp + hd_fn) > 0 else 0.0
+    hd_f1 = (
+        2 * hd_precision * hd_recall / (hd_precision + hd_recall)
+        if (hd_precision + hd_recall) > 0 else 0.0
+    )
+
+    def _det_rate(thr: float) -> float:
+        if not best_pair_ious:
+            return 0.0
+        return round(sum(1 for v in best_pair_ious if v >= thr) / len(best_pair_ious), 4)
+
     per_class_metrics: dict[str, dict] = {}
-    for label in VALID_LABELS:
+    for label in GROUNDING_LABELS:
         if label == "no_hazard":
             continue
         c = per_class.get(label, {"tp": 0, "fp": 0, "fn": 0})
@@ -307,6 +367,21 @@ def compute_grounding_metrics(
         "f1_score": round(f1, 4),
         "mean_iou": round(mean_iou, 4),
         "classification_accuracy": round(class_acc, 4),
+        # Threshold-independent localization (separate from the IoU@0.5 metrics above).
+        "mean_best_pair_iou": round(mean_best_iou, 4),
+        "global_max_iou": round(global_max_iou, 4),
+        "detection_rate_by_iou": {
+            "0.1": _det_rate(0.1), "0.3": _det_rate(0.3), "0.5": _det_rate(0.5),
+        },
+        # Box-exempt scene labels scored by frame-level presence (no IoU).
+        "scene_label_metrics": {
+            "high_density": {
+                "precision": round(hd_precision, 4),
+                "recall": round(hd_recall, 4),
+                "f1": round(hd_f1, 4),
+                "tp": hd_tp, "fp": hd_fp, "fn": hd_fn,
+            },
+        },
         "total_frames": n_preds,
         "total_gt_hazards": total_gt,
         "total_pred_hazards": total_pred,
@@ -352,8 +427,8 @@ def compute_severity_metrics(
             continue
         frame_id = pred.get("frame_id", "")
         gt = gt_by_frame.get(frame_id, {})
-        pred_h = _active_hazards(pred.get("hazards", []))
-        gt_h = _active_hazards(gt.get("hazards", []))
+        pred_h = _box_hazards(pred.get("hazards", []))
+        gt_h = _box_hazards(gt.get("hazards", []))
         if not pred_h or not gt_h:
             continue
         result = match_predictions_to_ground_truth(pred_h, gt_h, iou_threshold=0.5)
@@ -645,6 +720,20 @@ def _active_hazards(hazards: list[dict]) -> list[dict]:
     return [h for h in hazards if h.get("label") != "no_hazard"]
 
 
+def _box_hazards(hazards: list[dict]) -> list[dict]:
+    """Return only box-bearing hazards (excludes high_density / no_hazard).
+
+    Box-exempt labels are scene-level and must never enter IoU/box matching —
+    they are scored by frame-level presence instead.
+    """
+    return [h for h in hazards if h.get("label") not in BOX_EXEMPT_LABELS]
+
+
+def _has_label(hazards: list[dict], label: str) -> bool:
+    """True if any hazard in the list carries ``label``."""
+    return any(h.get("label") == label for h in hazards)
+
+
 def _record_to_pred_entry(rec: dict) -> dict:
     """Convert a raw predictions-JSONL record to a normalised eval dict."""
     frame_id = rec.get("frame_id", "")
@@ -718,6 +807,15 @@ def _format_grounding_report(metrics: dict) -> str:
         f"  IoU @ Threshold (Jaccard)      : {metrics.get('iou_at_threshold', 0):.4f}",
         f"  Mean IoU (matched pairs)       : {metrics.get('mean_iou', 0):.4f}",
         "",
+        "  Localization (threshold-independent)",
+        "  " + "-" * 40,
+        f"  Mean best-pair IoU             : {metrics.get('mean_best_pair_iou', 0):.4f}",
+        f"  Max IoU (any pair, whole set)  : {metrics.get('global_max_iou', 0):.4f}",
+        f"  Frame detect rate @IoU 0.1/0.3/0.5: "
+        f"{metrics.get('detection_rate_by_iou', {}).get('0.1', 0):.3f} / "
+        f"{metrics.get('detection_rate_by_iou', {}).get('0.3', 0):.3f} / "
+        f"{metrics.get('detection_rate_by_iou', {}).get('0.5', 0):.3f}",
+        "",
         "  Classification",
         "  " + "-" * 40,
         f"  Label Accuracy (matched)       : {metrics.get('classification_accuracy', 0):.4f}",
@@ -747,7 +845,7 @@ def _format_grounding_report(metrics: dict) -> str:
     ]
 
     per_class = metrics.get("per_class_metrics", {})
-    for label in VALID_LABELS:
+    for label in GROUNDING_LABELS:
         if label == "no_hazard":
             continue
         m = per_class.get(label)
