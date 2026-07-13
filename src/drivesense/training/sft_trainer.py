@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -574,7 +575,11 @@ def train(config_path: str | Path) -> dict:
     train_ds, val_ds = _load_datasets(config, processor)
 
     training_args = setup_training_args(config, output_dir)
-    training_args = _apply_debug_overrides(training_args, config)
+    # Only cap training in explicit debug mode. Previously this applied on every
+    # run because the config's ``debug:`` section always exists, so real training
+    # silently stopped at max_steps=10 (~0.3 epochs).
+    if os.environ.get("DRIVESENSE_DEBUG") == "1":
+        training_args = _apply_debug_overrides(training_args, config)
 
     callbacks = _build_callbacks(config, processor, val_ds)
     trainer = setup_trainer(model, processor, train_ds, val_ds, training_args, callbacks)

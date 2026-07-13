@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -296,17 +297,8 @@ def main() -> None:
         sys.exit(1)
 
     if args.debug:
-        # Write patched config back so train() picks up debug overrides
-        import tempfile
-
-        import yaml  # type: ignore[import]
-
-        with tempfile.NamedTemporaryFile(
-            suffix=".yaml", delete=False, mode="w", encoding="utf-8"
-        ) as tmp:
-            yaml.dump(config, tmp)
-            patched_cfg = tmp.name
-        args.config = patched_cfg
+        # train() applies the debug overrides when this is set (no temp config file).
+        os.environ["DRIVESENSE_DEBUG"] = "1"
 
     metrics = train(args.config)
     logger.info("Training complete.")
