@@ -156,11 +156,12 @@ def build_records(nusc: object, tokens: list[str], describe: object) -> list[dic
 
     fmt = SFTDataFormatter()
     records: list[dict] = []
-    failed = 0
+    failed = missing = 0
     for i, tok in enumerate(tokens):
         s = nusc.get("sample", tok)  # type: ignore[attr-defined]
         img = nusc.get_sample_data_path(s["data"]["CAM_FRONT"])  # type: ignore[attr-defined]
         if not os.path.exists(img):
+            missing += 1
             continue
         kept, _ = source_boxes_for_frame(nusc, tok)
         sc, meta = scene_meta(nusc, tok)
@@ -173,8 +174,8 @@ def build_records(nusc: object, tokens: list[str], describe: object) -> list[dic
         rec.update({"split": "", "scene_token": sc, **meta})
         records.append(rec)
         if (i + 1) % 25 == 0:
-            print(f"  {i + 1}/{len(tokens)} ({failed} VLM fail)")
-    print(f"built {len(records)} records, {failed} VLM failures")
+            print(f"  {i + 1}/{len(tokens)} ({failed} VLM fail, {missing} missing img)")
+    print(f"built {len(records)} records, {failed} VLM failures, {missing} skipped (missing image)")
     return records
 
 
