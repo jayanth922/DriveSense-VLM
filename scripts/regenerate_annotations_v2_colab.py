@@ -97,7 +97,8 @@ def curate_and_dedup(nusc: object, filt: object, args: argparse.Namespace) -> li
     random.shuffle(deduped)
     if args.max_frames:
         deduped = deduped[: args.max_frames]
-    print(f"curated {len(rare)} rare → {len(sel)} covered → {len(deduped)} after per-scene dedup")
+    tag = "image-covered" if args.dry else "selected (coverage checked next)"
+    print(f"curated {len(rare)} rare → {len(sel)} {tag} → {len(deduped)} after per-scene dedup")
     return deduped
 
 
