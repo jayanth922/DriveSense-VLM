@@ -47,6 +47,17 @@ class TestGatePasses:
         assert stats["max_single_box_freq"] == 0.125  # 1/8
         assert gate.evaluate_gate(stats, _args()) == []  # passes despite 0.125 > 0.02
 
+    def test_capped_duplicates_pass(self) -> None:
+        # A static object across 3 kept keyframes (== dedup cap, <= max_dup_frames)
+        # is benign and must PASS even though 3/N is a big ratio on a small split.
+        dup = [253, 506, 277, 583]
+        records = [_rec(f"d{i}", [{"label": "construction_zone", "bbox_2d": dup}]) for i in range(3)]
+        records += [_rec(f"u{i}", [{"label": "occluded_pedestrian", "bbox_2d": [i, i, i + 30, i + 80]}])
+                    for i in range(10)]
+        stats = gate.collect_stats(records)
+        assert stats["top_box_count"] == 3
+        assert gate.evaluate_gate(stats, _args()) == []   # 3 <= max_dup_frames(5) → benign
+
     def test_high_density_box_exempt_ignored(self) -> None:
         records = [
             _rec("f1", [{"label": "high_density"}]),  # no bbox, legitimately

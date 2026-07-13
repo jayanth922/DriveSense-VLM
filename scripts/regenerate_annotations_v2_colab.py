@@ -208,6 +208,8 @@ def split_and_write(records: list[dict], out_dir: Path, seed: int) -> dict[str, 
     split_of = {**{s: "train" for s in scenes[: max(1, int(.8 * n))]},
                 **{s: "val" for s in scenes[max(1, int(.8 * n)): max(2, int(.9 * n))]},
                 **{s: "test" for s in scenes[max(2, int(.9 * n)):]}}
+    for r in records:                       # stamp the split onto each record
+        r["split"] = split_of[r["scene_token"]]
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
     for sp in ("train", "val", "test"):
@@ -215,9 +217,9 @@ def split_and_write(records: list[dict], out_dir: Path, seed: int) -> dict[str, 
         paths[sp] = p
         with p.open("w", encoding="utf-8") as f:
             for r in records:
-                if split_of[r["scene_token"]] == sp:
+                if r["split"] == sp:
                     f.write(json.dumps(r) + "\n")
-        print(f"  {sp}: {sum(1 for r in records if split_of[r['scene_token']] == sp)} → {p}")
+        print(f"  {sp}: {sum(1 for r in records if r['split'] == sp)} → {p}")
     return paths
 
 
