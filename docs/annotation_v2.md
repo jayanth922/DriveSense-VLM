@@ -107,6 +107,23 @@ metrics) and scored by **frame-level presence** (precision/recall) instead.
    frustum clipping).
 6. ⏭ Full regeneration → gate must pass → retrain. **Approved to plan; not started.**
 
+## Regeneration (`scripts/regenerate_annotations_v2_colab.py`)
+
+One command: curate (`--min-score 5`) → **per-scene dedup** (`--frames-per-scene`,
+default 3) → GT box sourcing → describe-only Claude → SFT JSONL (scene-level split)
+→ hard gate. Notes from the dry run that shaped it:
+
+- **Describe-only `max_tokens=4096`** — 1024 truncated the JSON on dense (many-
+  hazard) frames, causing ~40% parse failures; 4096 fixed it (0 failures).
+- **Per-scene dedup** — a static object (barrier/cone) across consecutive keyframes
+  of a stopped-ego scene projects to the *same* box on many frames. That's correct
+  labelling but temporally-redundant; capping frames per scene removes the near-
+  duplicates (and stops the cross-frame-dup gate check from firing on benign repeats).
+- **`--dry`** uses image-covered frames only; a non-dry run asserts ≥95% image
+  coverage so a partial trainval mount can't silently bias the dataset.
+- VLM-failed frames are excluded (never templated); label + bbox_2d always come
+  from nuScenes GT.
+
 ---
 
 ## Step-5 proof results (nuScenes v1.0-trainval, Colab CPU)
