@@ -217,6 +217,23 @@ def test_resolve_missing_when_no_auth():
     assert kind == "missing" and ref == ""
 
 
+def test_blob_name_aliases_toggles_blobs_and_keyframes():
+    assert sm.blob_name_aliases("v1.0-trainval02_blobs.tgz") == [
+        "v1.0-trainval02_blobs.tgz", "v1.0-trainval02_keyframes.tgz"]
+    assert sm.blob_name_aliases("v1.0-trainval02_keyframes.tgz") == [
+        "v1.0-trainval02_keyframes.tgz", "v1.0-trainval02_blobs.tgz"]
+    assert sm.blob_name_aliases("other.tgz") == ["other.tgz"]
+
+
+def test_resolve_tolerates_keyframes_alias(tmp_path):
+    blob = "v1.0-trainval02_blobs.tgz"          # config names _blobs ...
+    kf = "v1.0-trainval02_keyframes.tgz"         # ... but URL/file is _keyframes
+    assert sm.resolve_blob_source(blob, None, {kf: "http://s"}, None, "u") == ("url", "http://s")
+    (tmp_path / kf).write_bytes(b"x")
+    kind, ref = sm.resolve_blob_source(blob, tmp_path, {}, None, "u")
+    assert kind == "local" and ref.endswith(kf)
+
+
 def test_auth_instructions_are_concrete():
     txt = sm.auth_instructions()
     assert "nuscenes.org" in txt

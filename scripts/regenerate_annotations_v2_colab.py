@@ -63,14 +63,62 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-coverage", type=float, default=0.95,
                    help="Required fraction of selected frames with images (non-dry).")
     p.add_argument("--dry", action="store_true", help="Skip the image-coverage assertion.")
+    p.add_argument("--shopping-list", default=None,
+                   help="Use this mining_shoppinglist.jsonl as the frame source and SKIP "
+                        "rarity re-curation (filter_rare_frames) AND per-scene dedup — the "
+                        "miner already selected these frames. Labels exactly the mined set.")
+    p.add_argument("--no-cache", action="store_true",
+                   help="Disable the per-frame describe cache (default: cache under "
+                        "<out-dir>/describe_cache so a killed run resumes, not restarts).")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
 
+def _cam_front_path(nusc: object, tok: str) -> str:
+    """Return the CAM_FRONT image path for a sample token."""
+    return nusc.get_sample_data_path(nusc.get("sample", tok)["data"]["CAM_FRONT"])  # type: ignore[attr-defined]
+
+
+def _tokens_from_shoppinglist(nusc: object, args: argparse.Namespace) -> list[str]:
+    """Frame source = mining shopping list. Rarity + per-scene dedup are SKIPPED.
+
+    Uses the ``sample_token`` of each shopping-list row directly, so exactly the
+    mined frames are labelled (not a re-filtered subset). Tokens absent from the
+    loaded ``--version`` tables are dropped with a count.
+    """
+    valid = {s["token"] for s in nusc.sample}  # type: ignore[attr-defined]
+    raw: list[str] = []
+    for line in Path(args.shopping_list).read_text().splitlines():
+        line = line.strip()
+        if line:
+            tok = json.loads(line).get("sample_token", "")
+            if tok:
+                raw.append(tok)
+    seen: set[str] = set()
+    ordered = [t for t in raw if not (t in seen or seen.add(t))]
+    tokens = [t for t in ordered if t in valid]
+    dropped = len(ordered) - len(tokens)
+    if args.dry:  # partial mounts: mechanics test on image-covered frames only
+        tokens = [t for t in tokens if os.path.exists(_cam_front_path(nusc, t))]
+    random.shuffle(tokens)
+    if args.max_frames:
+        tokens = tokens[: args.max_frames]
+    print(f"shopping-list: {len(ordered)} tokens, {dropped} not in {args.version} tables → "
+          f"{len(tokens)} frames (rarity re-curation + per-scene dedup SKIPPED)")
+    return tokens
+
+
 def curate_and_dedup(nusc: object, filt: object, args: argparse.Namespace) -> list[str]:
-    """Select rarity frames with images and cap frames per scene (dedup)."""
+    """Select rarity frames with images and cap frames per scene (dedup).
+
+    When ``--shopping-list`` is set, delegate to :func:`_tokens_from_shoppinglist`
+    and bypass rarity scoring + the per-scene cap entirely.
+    """
+    if args.shopping_list:
+        return _tokens_from_shoppinglist(nusc, args)
+
     def img_path(tok: str) -> str:
-        return nusc.get_sample_data_path(nusc.get("sample", tok)["data"]["CAM_FRONT"])  # type: ignore[attr-defined]
+        return _cam_front_path(nusc, tok)
 
     rare = [f["sample_token"] for f in filt.filter_rare_frames(min_score=args.min_score)]  # type: ignore[attr-defined]
     # Dry runs use only image-covered frames (mechanics test); full runs use all
@@ -150,33 +198,63 @@ def make_describe(model: str) -> object:
     return describe
 
 
-def build_records(nusc: object, tokens: list[str], describe: object) -> list[dict]:
-    """Box-source + describe each frame; GT box/label authoritative. Returns SFT records."""
+def _cached_annotate(
+    nusc: object, tok: str, img: str, meta: dict, describe: object, cache_dir: str | None
+) -> tuple[dict | None, int]:
+    """Return ``(annotation, was_cached)`` using a per-frame JSON cache.
+
+    A cache hit skips both box-sourcing and the (paid) describe call, so a
+    killed/disconnected run resumes instead of restarting from zero. The cache is
+    keyed by sample token; clear ``<out-dir>/describe_cache`` to force regeneration.
+    """
     from drivesense.data.box_sourcing import source_boxes_for_frame  # noqa: PLC0415
+
+    cf = Path(cache_dir) / f"{tok}.json" if cache_dir else None
+    if cf and cf.exists():
+        try:
+            return json.loads(cf.read_text()), 1
+        except (json.JSONDecodeError, OSError):
+            pass  # corrupt/partial cache entry → rebuild it
+    kept, _ = source_boxes_for_frame(nusc, tok)
+    ann = _annotate(img, kept, meta, describe)
+    if ann is not None and cf:
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps(ann))
+    return ann, 0
+
+
+def build_records(
+    nusc: object, tokens: list[str], describe: object, cache_dir: str | None = None
+) -> list[dict]:
+    """Box-source + describe each frame; GT box/label authoritative. Returns SFT records.
+
+    Resumable via a per-frame cache under ``cache_dir`` (see :func:`_cached_annotate`).
+    """
     from drivesense.data.annotation import SFTDataFormatter  # noqa: PLC0415
 
     fmt = SFTDataFormatter()
     records: list[dict] = []
-    failed = missing = 0
+    failed = missing = cached = 0
     for i, tok in enumerate(tokens):
         s = nusc.get("sample", tok)  # type: ignore[attr-defined]
         img = nusc.get_sample_data_path(s["data"]["CAM_FRONT"])  # type: ignore[attr-defined]
         if not os.path.exists(img):
             missing += 1
             continue
-        kept, _ = source_boxes_for_frame(nusc, tok)
         sc, meta = scene_meta(nusc, tok)
-        ann = _annotate(img, kept, meta, describe)
+        ann, was_cached = _cached_annotate(nusc, tok, img, meta, describe, cache_dir)
         if ann is None:
             failed += 1
             continue
+        cached += was_cached
         rec = fmt.format_single_example({"image_path": img, "annotations": ann,
                                          "frame_id": tok, "source": "nuscenes"})
         rec.update({"split": "", "scene_token": sc, **meta})
         records.append(rec)
         if (i + 1) % 25 == 0:
-            print(f"  {i + 1}/{len(tokens)} ({failed} VLM fail, {missing} missing img)")
-    print(f"built {len(records)} records, {failed} VLM failures, {missing} skipped (missing image)")
+            print(f"  {i + 1}/{len(tokens)} ({failed} VLM fail, {missing} missing, {cached} cached)")
+    print(f"built {len(records)} records, {failed} VLM failures, {missing} missing, "
+          f"{cached} from cache")
     return records
 
 
@@ -265,7 +343,10 @@ def main() -> None:
             sys.exit(f"ERROR: image coverage {cov:.1%} < {args.min_coverage:.0%}. "
                      "Mount all trainval blobs, or use --dry for a mechanics run.")
 
-    records = build_records(nusc, tokens, make_describe(args.model))
+    cache_dir = None if args.no_cache else str(Path(args.out_dir) / "describe_cache")
+    if cache_dir:
+        print(f"describe cache: {cache_dir} (resumable — re-run to continue after a drop)")
+    records = build_records(nusc, tokens, make_describe(args.model), cache_dir=cache_dir)
     paths = split_and_write(records, Path(args.out_dir), args.seed)
     if run_gate(paths):
         print("\n✅ ALL SPLITS PASSED THE GATE. Labels are safe to train on (retrain is a separate step).")

@@ -410,6 +410,28 @@ def load_blob_urls(config: dict, cli_file: str | None) -> dict[str, str]:
     return json.loads(path.read_text())
 
 
+def blob_name_aliases(blob: str) -> list[str]:
+    """Return ``blob`` plus its ``_blobs``/``_keyframes`` counterpart.
+
+    nuScenes serves full ``_blobs.tgz`` (samples + sweeps) and, for some accounts,
+    keyframe-only ``_keyframes.tgz``. Accepting either lets a ``urls.json`` or
+    ``--blob-dir`` keyed by one name resolve a config that names the other, while
+    the local tarball path stays a single consistent value (download = extract =
+    delete), so the cleanup can't reference a path that was never written.
+
+    Args:
+        blob: A blob filename.
+
+    Returns:
+        ``[blob, counterpart]`` (counterpart omitted if neither suffix matches).
+    """
+    if "_blobs.tgz" in blob:
+        return [blob, blob.replace("_blobs.tgz", "_keyframes.tgz")]
+    if "_keyframes.tgz" in blob:
+        return [blob, blob.replace("_keyframes.tgz", "_blobs.tgz")]
+    return [blob]
+
+
 def resolve_blob_source(
     blob: str,
     blob_dir: str | Path | None,
@@ -419,7 +441,9 @@ def resolve_blob_source(
 ) -> tuple[str, str]:
     """Resolve where a blob's bytes come from, in priority order.
 
-    Priority: a local pre-downloaded tarball → a signed URL → token+base_url.
+    Priority: a local pre-downloaded tarball → a signed URL → token+base_url. Both
+    the ``_blobs`` and ``_keyframes`` spellings are accepted (see
+    :func:`blob_name_aliases`).
 
     Args:
         blob:     Blob filename, e.g. ``v1.0-trainval02_blobs.tgz``.
@@ -432,12 +456,15 @@ def resolve_blob_source(
         ``(kind, ref)`` where kind is ``"local"``, ``"url"``, ``"token"``, or
         ``"missing"``. ``ref`` is a path, URL, or "" for missing.
     """
+    aliases = blob_name_aliases(blob)
     if blob_dir:
-        local = Path(blob_dir) / blob
-        if local.exists():
-            return "local", str(local)
-    if blob in url_map and url_map[blob]:
-        return "url", url_map[blob]
+        for name in aliases:
+            local = Path(blob_dir) / name
+            if local.exists():
+                return "local", str(local)
+    for name in aliases:
+        if url_map.get(name):
+            return "url", url_map[name]
     if token:
         return "token", f"{base_url.rstrip('/')}/{blob}"
     return "missing", ""

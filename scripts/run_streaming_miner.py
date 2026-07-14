@@ -254,9 +254,12 @@ def process_blob(blob: str, kind: str, ref: str, cfg: dict, wanted: set[str]) ->
         logger.info("[%s] matched %d new (%d already present)", blob, len(written), skipped)
         return len(written), footprint_gb
     finally:
-        if kind != "local" and tar_path.exists():
-            tar_path.unlink()  # delete tarball immediately — never keep two blobs
-            logger.info("[%s] deleted tarball", blob)
+        # Delete the downloaded tarball immediately (never keep two blobs). Pre-downloaded
+        # (--blob-dir) tarballs are left alone. missing_ok=True makes this idempotent —
+        # a retry / already-cleaned / never-persisted path won't raise FileNotFoundError.
+        if kind != "local":
+            tar_path.unlink(missing_ok=True)
+            logger.info("[%s] cleaned up tarball", blob)
 
 
 def _guard_free_space(cfg: dict) -> None:
