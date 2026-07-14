@@ -86,31 +86,68 @@ def local_image_exists(basename: str, cam_front_dir: str | Path) -> bool:
     return (Path(cam_front_dir) / basename).exists()
 
 
+def load_have_basenames(path: str | Path) -> set[str]:
+    """Load already-have image basenames from a manifest (to subtract WITHOUT
+    needing the physical image files on the box).
+
+    Accepts a flexible format — one entry per line, each being a bare basename,
+    a full path (basename taken), or a JSON object carrying ``basename`` or
+    ``cam_front_path``. Blank lines are ignored.
+
+    Args:
+        path: Path to the have-manifest file.
+
+    Returns:
+        Set of image basenames already owned.
+    """
+    have: set[str] = set()
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line[0] == "{":
+            rec = json.loads(line)
+            ref = rec.get("basename") or rec.get("cam_front_path", "")
+        else:
+            ref = line
+        if ref:
+            have.add(Path(ref).name)
+    return have
+
+
 def band_frames_without_images(
     metadata_path: str | Path,
     cam_front_dir: str | Path,
     band: tuple[int, int],
     mode: str = "hazard_class",
+    have_extra: set[str] | None = None,
 ) -> list[dict]:
-    """Select in-band frames whose CAM_FRONT image is not present locally.
+    """Select in-band frames whose CAM_FRONT image is not already owned.
+
+    A frame is subtracted if its basename is in ``have_extra`` (a manifest of
+    already-owned basenames) OR its image physically exists under
+    ``cam_front_dir``. Either path alone is sufficient — the manifest lets a box
+    subtract the already-downloaded frames without transferring the image bytes.
 
     Args:
         metadata_path: Global keyframe metadata JSONL.
         cam_front_dir: Local ``samples/CAM_FRONT`` dir to test image presence.
         band:          Inclusive ``(lo, hi)`` hazard band.
         mode:          Hazard-count mode (see :func:`frame_hazard_count`).
+        have_extra:    Optional set of already-owned basenames (from a manifest).
 
     Returns:
         Shopping-list dicts: ``basename``, ``sample_token``, ``scene_token``,
         ``hazard_count``, ``cam_front_path``.
     """
+    have_extra = have_extra or set()
     out: list[dict] = []
     for rec in iter_metadata(metadata_path):
         count = frame_hazard_count(rec, mode)
         if not in_band(count, band):
             continue
         basename = Path(rec["cam_front_path"]).name
-        if local_image_exists(basename, cam_front_dir):
+        if basename in have_extra or local_image_exists(basename, cam_front_dir):
             continue
         out.append({
             "basename": basename,
@@ -195,6 +232,43 @@ def write_shoppinglist(frames: list[dict], path: str | Path) -> None:
 def load_shoppinglist(path: str | Path) -> list[dict]:
     """Load a shopping-list JSONL file into a list of dicts."""
     return list(iter_metadata(path))
+
+
+def decide_rebuild_mode(
+    list_exists: bool,
+    have_count: int,
+    have_source: str,
+    force_rebuild: bool,
+    no_rebuild: bool,
+) -> tuple[bool, str]:
+    """Decide whether to rebuild the shopping list or reuse a frozen one.
+
+    Rebuild is IMPLICIT whenever there is something to subtract (a populated
+    dataset or a have-manifest), so the denominator footgun — sampling from the
+    full band and wasting target slots on frames you already own — cannot happen.
+    ``no_rebuild`` is the explicit escape hatch for reusing a frozen list.
+
+    Args:
+        list_exists:   Whether a shopping-list file is already on disk.
+        have_count:    Number of already-owned images available to subtract.
+        have_source:   Human label for where ``have_count`` came from.
+        force_rebuild: ``--rebuild-list`` was passed.
+        no_rebuild:    ``--no-rebuild-list`` was passed (escape hatch).
+
+    Returns:
+        ``(rebuild, reason)`` — ``reason`` is a loud, human-readable mode string.
+    """
+    if no_rebuild:
+        if list_exists:
+            return False, "reusing FROZEN list (--no-rebuild-list; NOT subtracting owned images)"
+        return True, "building fresh list (--no-rebuild-list set but no list on disk)"
+    if force_rebuild:
+        return True, f"rebuilding list against {have_count} already-owned images (--rebuild-list)"
+    if have_count > 0:
+        return True, f"rebuilding list against {have_count} already-owned images ({have_source})"
+    if list_exists:
+        return False, "reusing existing list (no owned images or --have-manifest to subtract)"
+    return True, "building fresh list (no owned images or --have-manifest to subtract)"
 
 
 def stratum_histogram(frames: list[dict], strata_edges: list[int]) -> dict[str, int]:

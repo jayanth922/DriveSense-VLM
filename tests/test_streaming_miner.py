@@ -99,6 +99,41 @@ def test_band_frames_excludes_present_images(tmp_path):
     assert out[0]["hazard_count"] == 5
 
 
+def test_have_manifest_subtracts_without_physical_images(tmp_path):
+    cam = tmp_path / "CAM_FRONT"  # deliberately does NOT exist (no image bytes)
+    hazards = [_ann("human.pedestrian.adult")] * 5
+    meta = _write_meta(tmp_path, [
+        _record("owned.jpg", hazards),
+        _record("want.jpg", hazards),
+    ])
+    manifest = tmp_path / "have.txt"
+    manifest.write_text("/some/drive/path/owned.jpg\n")  # path form; basename taken
+    have = sm.load_have_basenames(manifest)
+    out = sm.band_frames_without_images(meta, cam, (3, 20), have_extra=have)
+    assert [f["basename"] for f in out] == ["want.jpg"]
+
+
+def test_load_have_basenames_accepts_bare_path_and_jsonl(tmp_path):
+    p = tmp_path / "have.txt"
+    p.write_text('a.jpg\n/x/y/b.jpg\n{"basename": "c.jpg"}\n'
+                 '{"cam_front_path": "/z/d.jpg"}\n\n')
+    assert sm.load_have_basenames(p) == {"a.jpg", "b.jpg", "c.jpg", "d.jpg"}
+
+
+@pytest.mark.parametrize("exists,have,force,no_rebuild,expect_rebuild", [
+    (False, 0, False, False, True),    # nothing to subtract, no list -> build
+    (True, 0, False, False, False),    # nothing to subtract, list present -> reuse
+    (True, 10217, False, False, True), # owned images present -> implicit rebuild (footgun guard)
+    (True, 10217, False, True, False), # escape hatch -> reuse frozen despite owned images
+    (True, 0, True, False, True),      # explicit --rebuild-list
+    (False, 0, False, True, True),     # --no-rebuild-list but no list -> must build
+])
+def test_decide_rebuild_mode(exists, have, force, no_rebuild, expect_rebuild):
+    rebuild, reason = sm.decide_rebuild_mode(exists, have, "src", force, no_rebuild)
+    assert rebuild is expect_rebuild
+    assert isinstance(reason, str) and reason
+
+
 # ---------------------------------------------------------------------------
 # Stratified sampling
 # ---------------------------------------------------------------------------

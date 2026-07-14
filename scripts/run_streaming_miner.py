@@ -59,7 +59,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--build-list-only", action="store_true",
                    help="Build the shopping list and exit")
     p.add_argument("--rebuild-list", action="store_true",
-                   help="Rebuild the shopping list even if it already exists")
+                   help="Force-rebuild the shopping list (implicit when the dataset "
+                        "is populated or --have-manifest is given)")
+    p.add_argument("--no-rebuild-list", action="store_true",
+                   help="Escape hatch: reuse the frozen list even if owned images exist")
+    p.add_argument("--have-manifest", default=None,
+                   help="File of already-owned image basenames/paths to subtract WITHOUT "
+                        "needing the physical images on the box")
     p.add_argument("--target-count", type=int, default=None,
                    help="Override mining.target_count (0 = whole band)")
     p.add_argument("--disk-cap-gb", type=float, default=None,
@@ -108,12 +114,44 @@ def resolve_cfg(args: argparse.Namespace) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_have(cfg: dict, args: argparse.Namespace) -> tuple[set[str], int, str]:
+    """Resolve the already-owned image set + a count/source label for logging.
+
+    A ``--have-manifest`` is authoritative (no image bytes needed); otherwise a
+    populated ``dataroot/samples/CAM_FRONT`` counts as owned.
+    """
+    if args.have_manifest:
+        have = sm.load_have_basenames(args.have_manifest)
+        return have, len(have), f"--have-manifest {args.have_manifest}"
+    cam_dir = Path(cfg["cam_front_dir"])
+    if cam_dir.exists() and next(cam_dir.glob("*.jpg"), None) is not None:
+        count = sum(1 for _ in cam_dir.glob("*.jpg"))
+        return set(), count, f"populated dataset {cam_dir}"
+    return set(), 0, ""
+
+
+def _log_mode(reason: str, rebuild: bool) -> None:
+    """Log the chosen list mode LOUDLY (warning when reusing a frozen list)."""
+    log = logger.info if rebuild else logger.warning
+    log("=" * 64)
+    log("SHOPPING LIST MODE: %s", reason)
+    log("=" * 64)
+
+
 def build_or_load_list(cfg: dict, args: argparse.Namespace) -> list[dict]:
-    """Build the shopping list (band filter + stratified sample) or reuse it."""
+    """Build the shopping list (band filter + stratified sample) or reuse it.
+
+    Rebuild is implicit whenever owned images can be subtracted (populated dataset
+    or --have-manifest); --no-rebuild-list forces reuse of a frozen list.
+    """
     path = Path(cfg["shoppinglist_path"])
-    if path.exists() and not args.rebuild_list:
+    have, have_count, have_source = _resolve_have(cfg, args)
+    rebuild, reason = sm.decide_rebuild_mode(
+        path.exists(), have_count, have_source, args.rebuild_list, args.no_rebuild_list)
+    _log_mode(reason, rebuild)
+    if not rebuild:
         frames = sm.load_shoppinglist(path)
-        logger.info("Reusing existing shopping list: %d frames (%s)", len(frames), path)
+        logger.info("Reusing frozen list: %d frames (%s)", len(frames), path)
         return frames
     meta = Path(cfg["metadata_path"])
     if not meta.exists():
@@ -123,8 +161,8 @@ def build_or_load_list(cfg: dict, args: argparse.Namespace) -> list[dict]:
         sys.exit(1)
     logger.info("Scanning metadata for %s hazards in band %s ...", cfg["count_mode"], cfg["band"])
     candidates = sm.band_frames_without_images(
-        meta, cfg["cam_front_dir"], cfg["band"], cfg["count_mode"])
-    logger.info("In-band frames without local images: %d", len(candidates))
+        meta, cfg["cam_front_dir"], cfg["band"], cfg["count_mode"], have_extra=have)
+    logger.info("In-band frames not already owned: %d", len(candidates))
     sampled = sm.stratified_sample(
         candidates, cfg["target_count"], cfg["strata_edges"], cfg["seed"])
     sm.write_shoppinglist(sampled, path)
