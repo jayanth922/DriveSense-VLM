@@ -1,313 +1,159 @@
 ---
+license: apache-2.0
+base_model: Qwen/Qwen2.5-VL-3B-Instruct
+tags:
+  - vision-language-model
+  - autonomous-driving
+  - hazard-detection
+  - lora
+  - qwen2.5-vl
+datasets:
+  - nuScenes
 language:
   - en
-license: apache-2.0
-library_name: transformers
-tags:
-  - autonomous-vehicles
-  - vision-language-model
-  - hazard-detection
-  - object-detection
-  - safety-critical
-  - qwen3-vl
-  - lora
-  - awq
-datasets:
-  - nuscenes
-  - dada-2000
-metrics:
-  - iou
-  - f1
-  - detection-rate
 pipeline_tag: image-text-to-text
-base_model: Qwen/Qwen3-VL-2B-Instruct
 ---
 
 # DriveSense-VLM
 
-**Qwen3-VL-2B-Instruct fine-tuned on rare-hazard AV dashcam data via LoRA SFT + AWQ 4-bit quantization**
+**Qwen2.5-VL-3B-Instruct fine-tuned on rare-hazard AV dashcam data via LoRA SFT.**
 
-DriveSense-VLM detects rare hazard events in autonomous vehicle dashcam footage.
-Given a single image, the model outputs structured JSON with 2-D bounding boxes,
-hazard class, severity (1–5), chain-of-thought reasoning, and a recommended ego action.
-The model is optimised for edge deployment (T4/A100) using AWQ 4-bit quantisation and
-an optional TensorRT-compiled ViT encoder.
+DriveSense-VLM detects and explains rare, safety-critical hazards in autonomous-driving dashcam
+frames, emitting structured JSON: a per-hazard bounding box, a 7-class hazard label, severity,
+chain-of-thought reasoning, and a recommended ego-vehicle action. Bounding-box labels are
+**projected from nuScenes 3-D ground truth**; a foundation model writes only the
+severity/reasoning/action text for each real box.
+
+> **Status: research / offline-evaluation only.** Grounding accuracy is low (see Results). This
+> model is a debugging-and-rebuild case study, not a deployable detector.
 
 ---
 
-## Model Details
-
-### Model Description
+## Model details
 
 | Field | Value |
 |-------|-------|
-| **Model type** | Vision-Language (VLM) — encoder-decoder |
-| **Base model** | `Qwen/Qwen3-VL-2B-Instruct` |
-| **Adapter** | LoRA (rank 32, alpha 64, targets: `q/k/v/o/up/down_proj`) |
-| **Quantization** | AutoAWQ 4-bit (LLM decoder only; ViT stays fp16) |
-| **Context** | Single dashcam frame (672 × 448, letterboxed) |
-| **Output** | Structured JSON per hazard instance |
-| **Languages** | English (reasoning and action fields) |
-| **License** | Apache 2.0 |
+| **Base model** | `Qwen/Qwen2.5-VL-3B-Instruct` |
+| **Fine-tuning** | LoRA (rank 32, alpha 64; targets `q/k/v/o/up/down_proj`) |
+| **Precision** | bf16 (training); bitsandbytes NF4 4-bit for the T4 demo |
+| **Task** | Structured rare-hazard detection + reasoning |
+| **Training data** | ~688 rare-hazard nuScenes v1.0-trainval frames (549/72/67) |
+| **Hardware** | Single A100 (training), T4 (demo) |
 
-### Supported Inference Backends
-
-| Backend | Hardware | Notes |
-|---------|----------|-------|
-| `transformers` (fp16) | CPU / any GPU | Reference; slow |
-| `transformers` + AWQ | T4 / consumer GPU | Primary edge target |
-| vLLM + AWQ | A100 / HPC | Production serving |
-| TensorRT ViT + AWQ | T4 / A100 | Maximum throughput |
-
----
-
-## Uses
-
-### Intended Uses
-
-- **AV safety research** — offline evaluation of rare-hazard detection
-- **Dataset annotation** — automated labelling with human review
-- **Simulation-in-the-loop** — flag near-miss events in logged data
-- **Edge deployment** — T4 GPU inference with sub-500 ms latency
-
-### Out-of-Scope Uses
-
-- Real-time onboard AV control — model output must not directly actuate a vehicle
-- Pedestrian identification — no person re-identification is performed or intended
-- Surveillance or non-AV video analysis
-
----
-
-## Bias, Risks, and Limitations
-
-- **Data bias**: nuScenes data is North American / Singapore urban; DADA-2000 is Chinese
-  expressway. Rural, sub-Saharan, and South Asian road conditions are underrepresented.
-- **Night / adverse-weather performance**: detection rate drops ~7% at night and ~12% in
-  rain; see Robustness Evaluation below.
-- **Small-object hazards**: bounding-box accuracy degrades for objects smaller than
-  roughly 32 × 32 pixels at 672 × 448 resolution.
-- **Hallucinated reasoning**: the LLM backbone may produce plausible but factually
-  incorrect reasoning text even when the bounding box is correct. Treat reasoning fields
-  as advisory, not ground truth.
-- **Quantisation degradation**: AWQ 4-bit reduces label agreement by approximately 1.3%
-  versus fp16 (within the ≤ 2% target).
-
-### Recommendations
-
-Always pair model outputs with a rule-based fallback for safety-critical decisions.
-Use the `severity` field to triage — only severity ≥ 3 events should trigger
-automated actions in a supervised AV stack.
-
----
-
-## Training Details
-
-### Training Data
-
-| Dataset | Frames | Split | Selection criterion |
-|---------|--------|-------|---------------------|
-| nuScenes (mini + v1.0) | ~600 | 70/15/15 | Rarity score ≥ 3 (out of 6 signals) |
-| DADA-2000 | ~300 | 70/15/15 | Critical moment + 2 context frames |
-| Counterfactual augmentation | ~240 | train only | LLM-generated (Claude claude-sonnet-4-6) |
-
-**Rarity signals (nuScenes)**: proximity (< 5 m to ego), occlusion (0–40% visibility),
-density (≥ 15 agents), adverse weather/night, vulnerable road user at intersection,
-cyclist present.
-
-**Annotation**: structured JSON annotations generated with `claude-sonnet-4-6` via
-an async pipeline with 3-retry exponential backoff and per-frame file cache.
-Counterfactual scenarios applied to ~30% of hazard frames.
-
-**SFT format**: Qwen3-VL chat-format JSONL; one example per frame; assistant turn is
-the full JSON annotation; all tokens before `<|im_start|>assistant` masked to -100.
-
-### Training Procedure
-
-```
-Base:            Qwen/Qwen3-VL-2B-Instruct
-Adapter:         LoRA rank=32, alpha=64, dropout=0.05
-Targets:         q_proj, k_proj, v_proj, o_proj, up_proj, down_proj
-Optimizer:       AdamW (lr=2e-4, weight_decay=0.01, cosine schedule)
-Precision:       bf16 + gradient checkpointing
-Batch size:      4 (effective 8 with grad accum=2)
-Epochs:          3 (early stopping patience=3)
-Hardware:        1× A100-40GB (SJSU CoE HPC, SLURM)
-```
-
-Post-training pipeline:
-
-1. LoRA merge → full-weight `.safetensors`
-2. AutoAWQ 4-bit quantisation (decoder only, calibration from SFT train split)
-3. Optional TensorRT ViT compilation (ONNX opset 17 → TRT FP16, fixed batch size)
-
----
-
-## Evaluation
-
-### 4-Level Evaluation Framework
-
-#### Level 1 — Grounding Accuracy
-
-| Metric | Target | Result |
-|--------|--------|--------|
-| Detection Rate (IoU ≥ 0.5) | ≥ 0.70 | TBD |
-| False Positive Rate | ≤ 0.15 | TBD |
-| IoU @ threshold | ≥ 0.50 | TBD |
-| Parse Success Rate | ≥ 0.95 | TBD |
-
-#### Level 2 — Reasoning Quality (LLM-as-Judge)
-
-| Dimension | Target | Result |
-|-----------|--------|--------|
-| Hazard Identification | ≥ 3.5 / 5 | TBD |
-| Risk Assessment | ≥ 3.5 / 5 | TBD |
-| Action Recommendation | ≥ 3.5 / 5 | TBD |
-| Pass Rate (all ≥ 3.5) | ≥ 0.70 | TBD |
-
-#### Level 3 — Production Readiness
-
-| Metric | Target | Measured |
-|--------|--------|---------|
-| T4 latency (p50) | < 500 ms | ~432 ms |
-| A100 latency (p50) | < 200 ms | ~187 ms |
-| ViT TensorRT latency | < 25 ms | ~21 ms |
-| A100 throughput | ≥ 8 FPS | ~9.2 FPS |
-| T4 VRAM | ≤ 6 GB | ~3.1 GB |
-| AWQ degradation | ≤ 2.0% | ~1.3% |
-
-#### Level 4 — Robustness
-
-| Condition | Gap Metric | Target | Measured |
-|-----------|-----------|--------|---------|
-| Day vs Night | DR gap | ≤ 0.10 | ~0.072 |
-| Weather (clear/rain/fog) | DR gap | ≤ 0.15 | ~0.118 |
-| Location (highway/urban/residential) | DR gap | ≤ 0.10 | ~0.054 |
-| OOD (DADA / nuScenes) | Relative perf | ≥ 0.70 | ~0.891 |
-
-### Output Schema
-
+### Output schema
 ```json
 {
   "hazards": [
     {
       "bbox_2d": [x1, y1, x2, y2],
-      "hazard_class": "pedestrian_in_path | vehicle_cut_in | debris | ...",
-      "severity": 3,
-      "reasoning": "Chain-of-thought explanation of why this is a hazard...",
-      "action": "emergency_brake | yield | lane_change | maintain_speed"
+      "label": "occluded_pedestrian",
+      "severity": "high",
+      "reasoning": "Pedestrian partially occluded by parked van, near ego path...",
+      "action": "brake"
     }
-  ],
-  "scene_summary": "Brief description of the overall scene.",
-  "ego_context": {
-    "weather": "clear | rain | fog | snow",
-    "time_of_day": "day | night | dusk | dawn",
-    "road_type": "highway | urban | residential | parking"
-  }
+  ]
 }
 ```
-
-Bounding box coordinates are in `[0, 1000]` integer space (normalised by image dimensions).
-
----
-
-## Environmental Impact
-
-Training was performed on 1× NVIDIA A100 40GB for approximately 2–3 hours on
-SJSU HPC infrastructure (shared academic cluster).
-
-Estimated carbon impact: < 0.5 kg CO₂eq (using average US grid intensity of
-0.386 kg CO₂eq / kWh and ~1.2 kWh estimated training compute).
+7-class taxonomy: `construction_zone`, `cyclist_proximity`, `high_density`, `jaywalking`,
+`occluded_pedestrian`, `unusual_object`, `no_hazard`.
 
 ---
 
-## Technical Specifications
+## Results (v2 — measured, reproducible)
 
-### Model Architecture
+Fine-tuned on 688 rare-hazard nuScenes frames (549 train / 72 val / 67 test; ~8 v1.0-trainval
+logs, predominantly daytime, Boston + Singapore). Training: 8 epochs, train loss 0.75,
+`train ≈ val` (no overfitting).
+
+**Level-1 grounding (test, n = 67):**
+
+| Metric | Value |
+|--------|-------|
+| Detection Recall @ IoU 0.5 | 1.0% |
+| Detection Precision @ IoU 0.5 | 2.4% |
+| **Detection F1 @ IoU 0.5** | **1.4%** |
+| Mean best-pair IoU (localization) | 0.12 |
+| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 33% / 20% / 5% |
+| Output parse rate | 76% |
+
+**These numbers are low, and reported exactly as measured.** The model is real and un-collapsed
+(it localizes something near a hazard on ~1/3 of frames), but grounding is weak — the small,
+narrow dataset is the dominant limiter.
+
+---
+
+## Limitations
+
+- **Small, narrow dataset** — 688 frames from ~8 logs, predominantly daytime, two cities. This is
+  the primary reason grounding is weak; more and more-diverse data is the main lever.
+- **Weak localization** — predictions rarely reach the IoU 0.5 threshold.
+- **Dense-frame parse failures (~24%)** — on the densest multi-hazard frames the model's output
+  **exceeds the generation token budget and ends mid-JSON** (verified: 16/67 test frames truncated
+  at ~1,164 tokens under the 1024-token cap → parse failure). Root cause is **undertraining on a
+  small dataset**; repetition of hazard objects on dense frames may be a contributing factor.
+  Increasing the token budget did not resolve it.
+- **Not for deployment** — research / offline evaluation only; never for real-time or
+  safety-critical vehicle control.
+
+---
+
+## Training data
+
+**nuScenes** (v1.0-trainval, CAM_FRONT keyframes). Each frame is scored 0–6 across 6 binary rarity
+signals: proximity (< 5 m to ego), occlusion (0–40% visibility), density (≥ 15 agents), adverse
+weather/night, vulnerable road user at intersection, cyclist present. Frames scoring ≥ 5 are
+selected and deduplicated per scene. **Bounding boxes are projected from the dataset's 3-D
+ground-truth annotations** into the 2-D camera frame (near-plane frustum clipped). A foundation
+model (Claude) writes only severity/reasoning/action per real box — it never draws boxes. A hard
+validation gate blocks the label set from training on any sign of collapse (repeated boxes,
+oversized boxes, cross-frame duplication, schema violations).
+
+**SFT format**: Qwen2.5-VL chat-format JSONL; one example per frame; the assistant turn is the
+structured-JSON hazard list, supervised via prefix-masked labels.
+
+---
+
+## Training procedure
 
 ```
-Input: 672×448 dashcam image + system prompt
-  │
-  ├─ ViT Encoder (Qwen3-VL visual, 448 patches)
-  │     └─ Optional: TensorRT FP16 compilation
-  │
-  └─ LLM Decoder (Qwen3 2B, 28 transformer layers)
-        ├─ LoRA adapters on q/k/v/o/up/down_proj
-        └─ AWQ 4-bit quantisation (decoder only)
-
-Output: Structured JSON → parsed to hazard dicts
+Base:            Qwen/Qwen2.5-VL-3B-Instruct
+Method:          LoRA SFT (rank 32, alpha 64)
+Targets:         q_proj, k_proj, v_proj, o_proj, up_proj, down_proj
+Precision:       bf16
+Epochs:          8   (train loss 0.75, train ≈ val)
+Label masking:   prefix tokenization (only assistant JSON supervised)
+Hardware:        single A100
 ```
 
-### Software Stack
+---
 
-| Component | Library | Version |
-|-----------|---------|---------|
-| Base model | transformers | ≥ 4.51 |
-| LoRA | peft | ≥ 0.14 |
-| Quantisation | autoawq | ≥ 0.2.0 |
-| Production serving | vllm | ≥ 0.4 |
-| ViT compiler | tensorrt | ≥ 10.0 |
-| Demo | gradio | ≥ 4.44 |
-| Experiment tracking | wandb | ≥ 0.19 |
-| Image preprocessing | qwen-vl-utils | ≥ 0.0.4 |
+## Intended use & out-of-scope
+
+**Intended**: research on VLM grounding for AV perception; a reference implementation of an
+honest data → training → evaluation pipeline with pre-training data-quality gates.
+
+**Out of scope**: any real-time perception, driver assistance, or safety-critical control. The
+grounding accuracy is far too low, and the model was trained on a small, narrow slice of nuScenes.
 
 ---
 
 ## Citation
 
 ```bibtex
-@misc{drivesense-vlm-2025,
-  title        = {DriveSense-VLM: Rare-Hazard Detection for Autonomous Vehicles},
-  author       = {Spartan},
-  year         = {2025},
-  howpublished = {GitHub},
-  url          = {https://github.com/spartan/DriveSense-VLM},
-  note         = {Fine-tuned Qwen3-VL-2B for structured AV hazard detection
-                  with LoRA SFT + AWQ quantisation + 4-level evaluation framework}
+@software{drivesense_vlm_2026,
+  title   = {DriveSense-VLM: Fine-tuned Qwen2.5-VL-3B for structured AV hazard detection},
+  author  = {Kalyanam, Jayanth},
+  year    = {2026},
+  note    = {LoRA SFT on rare-hazard nuScenes frames with 3D-ground-truth box projection
+             and a pre-training data-quality validation gate}
 }
 ```
 
 ---
 
-## How to Use
+## Acknowledgments
 
-### Inference (transformers + AWQ)
-
-```python
-from drivesense.inference.serve import DriveSenseLocalInference
-import yaml
-from pathlib import Path
-
-config = yaml.safe_load(Path("configs/inference.yaml").read_text())
-model = DriveSenseLocalInference(config)
-
-result = model.predict("path/to/dashcam_frame.jpg")
-print(result)
-# {"hazards": [{"bbox_2d": [102, 234, 398, 512], "hazard_class": "pedestrian_in_path",
-#               "severity": 4, "reasoning": "...", "action": "emergency_brake"}],
-#  "scene_summary": "...", "ego_context": {...}}
-```
-
-### vLLM Serving (A100)
-
-```bash
-# Start server
-python src/drivesense/inference/serve.py --port 8000
-
-# Benchmark
-python scripts/run_benchmark.py --vllm --output outputs/benchmarks/
-```
-
-### Gradio Demo
-
-```bash
-pip install -r demo/requirements.txt
-python demo/app.py
-# Opens at http://localhost:7860
-```
-
----
-
-## Model Card Contact
-
-For questions about this model, open an issue on the project repository or
-contact the author via the GitHub profile linked to the DriveSense-VLM repository.
+- **Qwen Team (Alibaba)** — Qwen2.5-VL-3B-Instruct (Apache 2.0)
+- **nuScenes / Motional** — nuScenes autonomous-driving dataset
+- **HuggingFace** — Transformers, PEFT, Spaces
+- **Anthropic** — Claude API for describe-only annotation and LLM-as-judge evaluation

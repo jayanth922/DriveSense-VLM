@@ -8,14 +8,14 @@ sdk_version: "4.0"
 app_file: app.py
 pinned: false
 license: apache-2.0
-short_description: Rare driving hazard detection with Qwen3-VL-2B
+short_description: Rare driving hazard detection with Qwen2.5-VL-3B
 ---
 
 # DriveSense-VLM — AV Rare Hazard Detection
 
 Upload a dashcam image to detect rare driving hazards.
 
-**Model:** Qwen3-VL-2B-Instruct + LoRA SFT (AWQ 4-bit quantized)
+**Model:** Qwen2.5-VL-3B-Instruct + LoRA SFT (bitsandbytes NF4 4-bit for the T4 demo)
 
 **Output:** Structured JSON with bounding boxes, hazard labels,
 severity (low/medium/high/critical), chain-of-thought reasoning,
@@ -55,4 +55,4 @@ and ego-vehicle action recommendation.
 
 ## Hardware
 
-Runs on HuggingFace Spaces free T4 GPU using AWQ 4-bit quantized inference.
+Runs on HuggingFace Spaces free T4 GPU using bitsandbytes NF4 4-bit quantized inference.

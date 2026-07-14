@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-SFT-optimized VLM for AV rare hazard detection using Qwen3-VL-2B.
+SFT-optimized VLM for AV rare hazard detection using Qwen2.5-VL-3B.
 
 ## Current Phase
 
@@ -10,10 +10,10 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 
 ## Architecture Decisions
 
-- **Model**: Qwen3-VL-2B-Instruct + LoRA (rank 32, alpha 64)
-- **Data**: nuScenes + DADA-2000 + LLM counterfactual augmentation (800–1200 examples total)
+- **Model**: Qwen2.5-VL-3B-Instruct + LoRA (rank 32, alpha 64)
+- **Data**: nuScenes v1.0-trainval rare-hazard frames (~688; 549/72/67), bounding boxes projected from 3D ground truth
 - **Output**: Structured JSON (`bbox_2d`, `hazard_class`, `severity`, `reasoning`, `action`)
-- **Inference**: AWQ 4-bit LLM + TensorRT ViT (fp16) + vLLM serving
+- **Inference**: bitsandbytes NF4 4-bit (T4 demo) + transformers. TensorRT ViT / vLLM / merge-quantize are legacy Phase-3 code, not used in the v2 nuScenes-only pipeline.
 - **Demo**: Gradio + transformers on HF Spaces free T4 GPU
 - **Eval**: 4-level framework (grounding accuracy, reasoning quality, production readiness, robustness)
 - **Tracking**: Weights & Biases (`drivesense-vlm` project)
@@ -32,12 +32,11 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Predictions output**: `outputs/predictions/test_predictions.jsonl` — raw + parsed model outputs
 - **SLURM job**: `slurm/train.sbatch` — HPC job submission for Phase 2a
 - **LoRA merger**: `src/drivesense/inference/merge_lora.py` — Phase 3a: LoRAMerger, merge_lora_checkpoint, verify_merge
-- **AWQ quantizer**: `src/drivesense/inference/quantize.py` — Phase 3a: AWQQuantizer, quantize_model, load_calibration_data
 - **TensorRT ViT**: `src/drivesense/inference/tensorrt_vit.py` — Phase 3b: ViTExtractor, _ViTWrapper, export_to_onnx, compile_tensorrt, benchmark_vit, full_pipeline
 - **Optimization CLI**: `scripts/run_optimize_model.py` — Phase 3a+3b entry point (--all, --merge, --quantize, --tensorrt, --mock)
 - **Optimization SLURM**: `slurm/optimize.sbatch` — HPC job for full optimization pipeline
 - **Merged model output**: `outputs/merged_model/` — full-weight .safetensors + processor
-- **Quantized model output**: `outputs/quantized_model/` — AWQ 4-bit weights + quant_config.json
+- **Quantized model output**: `outputs/quantized_model/` — legacy 4-bit weights + quant_config.json (not used in v2)
 - **Serving layer**: `src/drivesense/inference/serve.py` — Phase 3c: DriveSenseVLLMServer (vLLM), DriveSenseLocalInference (transformers), draw_hazard_boxes, DRIVESENSE_SYSTEM_PROMPT, SEVERITY_COLORS
 - **Benchmark CLI**: `scripts/run_benchmark.py` — Phase 3c entry point (--local, --vllm, --vit-only, --mock, --output)
 - **Gradio demo**: `demo/app.py` — Phase 4a: create_demo(), analyze_image(), draw_hazard_boxes(), lazy model loading, HF Spaces T4 target
@@ -45,7 +44,7 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Robustness evaluator**: `src/drivesense/eval/robustness.py` — Phase 4b: RobustnessEvaluator, stratify_predictions, compute_stratified_metrics, _extract_stratum_value, _compute_all_gaps, run_robustness_evaluation
 - **Full evaluation CLI**: `scripts/run_full_evaluation.py` — Phase 4b: --level 1 2 3 4, --mock, --generate-report; compile_final_report, box-drawing ASCII report (_WIDTH=66)
 - **Model card**: `MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
-- **Demo requirements**: `demo/requirements.txt` — autoawq>=0.2.0, qwen-vl-utils>=0.0.4 added
+- **Demo requirements**: `demo/requirements.txt` — bitsandbytes, qwen-vl-utils, gradio (T4 NF4 demo)
 - **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
 - **Demo examples**: `demo/examples/` — placeholder directory for example dashcam images
 - **Benchmark output**: `outputs/benchmarks/` — per-run JSON benchmark results
@@ -63,9 +62,6 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Scripts**: `scripts/` — download, HPC setup, sanity check
 - **SLURM jobs**: `slurm/*.sbatch` — HPC job submission scripts
 - **Tests**: `tests/` — pytest test suite
-- **DADA-2000 loader**: `src/drivesense/data/dada_loader.py` — Phase 1b DADA2000Loader
-- **DADA extraction CLI**: `scripts/run_dada_extraction.py` — Phase 1b entry point
-- **DADA output**: `outputs/data/dada_extracted/` — images + metadata.jsonl
 - **Unified dataset**: `src/drivesense/data/dataset.py` — UnifiedDatasetBuilder + DriveSenseDataset
 - **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder
 - **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files
@@ -89,14 +85,10 @@ python scripts/run_spark_pipeline.py --version v1.0-mini
 python scripts/run_spark_pipeline.py --skip-extraction        # reuse existing JSONL
 python scripts/run_spark_pipeline.py --analytics-only         # analytics only
 
-# Phase 1b: DADA-2000 extraction
-python scripts/run_dada_extraction.py --dada-root ~/data/dada2000
-python scripts/run_dada_extraction.py --max-sequences 10      # debug/dev
 
 # Phase 1b: Build unified dataset
 python scripts/run_build_unified_dataset.py
 python scripts/run_build_unified_dataset.py --nuscenes-only
-python scripts/run_build_unified_dataset.py --dada-only
 
 # Phase 1c: LLM annotation pipeline
 python scripts/run_annotation_pipeline.py --dry-run --mock-llm   # validate prompts, no API
@@ -187,11 +179,11 @@ black src/
 | 0.5a | Project Scaffolding | ✅ Complete |
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
-| 1b | DADA-2000 critical moment extraction | ✅ Complete |
+| 1b | Critical-moment extraction (legacy, unused in v2) | ✅ Complete |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training on HPC | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
-| 3a | LoRA merge + AWQ quantization | ✅ Complete |
+| 3a | LoRA merge + 4-bit quantization (legacy) | ✅ Complete |
 | 3b | TensorRT ViT compilation | ✅ Complete |
 | 3c | vLLM production serving setup | ✅ Complete |
 | 3d | vLLM production serving | ✅ Complete |
@@ -204,7 +196,7 @@ black src/
 1. **ALWAYS read the relevant config YAML** before modifying any module — configs are the
    single source of truth for all hyperparameters and paths.
 2. **NEVER hardcode file paths** — use `configs/*.yaml` values accessed via `pathlib.Path`.
-3. **NEVER install GPU packages locally** — `torch`, `vllm`, `tensorrt`, `autoawq`,
+3. **NEVER install GPU packages locally** — `torch`, `vllm`, `tensorrt`,
    `bitsandbytes`, and `flash-attn` are HPC-only. Use `try/except ImportError` guards.
 4. **ALWAYS add type hints** to all function signatures (use `from __future__ import annotations`).
 5. **ALWAYS write tests** for new functionality in `tests/`.
@@ -246,17 +238,14 @@ black src/
 - Spark schemas are always **explicit** (`StructType`) — never use `inferSchema`.
 - `filter_by_threshold()` raises `RuntimeError` if `compute_all_scores()` was not called first.
 - Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
-- DADA-2000 extraction: `DADA2000Loader` scans `<dada_root>/DADA-2000/<cat>/<seq>/images/`; extracts critical frame + `additional_context_frames` before (pre_accident) and after (mid_accident); resizes to 672×448 via `resize_with_aspect_ratio`; exports `metadata.jsonl` + images.
-- `normalize_column_names()` does fuzzy case-insensitive matching against Excel column headers — handles column name variations in `dada_text_annotations.xlsx`.
-- `UnifiedDatasetBuilder` merges nuScenes (Parquet or JSONL) + DADA-2000 (JSONL); assigns train/val/test via `StratifiedShuffleSplit` (stratified on source+category); falls back to sequential split when sklearn unavailable or n<10.
+- `UnifiedDatasetBuilder` (legacy) merged multiple sources into train/val/test splits; the v2 pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
 - `DriveSenseDataset(manifest_path, split, config, processor)` takes the per-split manifest JSONL; `get_collate_fn()` returns `collate_fn` which batches images as a list (not tensored — VLM processor handles padding).
 - `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
-- DADA-2000 extraction: critical moment frame + 2 context frames before.
 - **Annotation pipeline** (`annotation.py`): `AnnotationPromptBuilder` loads templates from
   `prompts/*.txt` and `counterfactual_scenarios.json`; `AnnotationValidator` validates + fixes
   LLM output (clamp coords, swap inverted bbox, add ego_context defaults, extract JSON from fences);
   `LLMAnnotationPipeline` uses file-based per-frame cache (resume support), async batch with
-  semaphore, 3-retry exponential backoff; `SFTDataFormatter` writes Qwen3-VL chat-format JSONL.
+  semaphore, 3-retry exponential backoff; `SFTDataFormatter` writes Qwen2.5-VL chat-format JSONL.
 - Annotation target schema uses `hazards` array with `label` (from VALID_LABELS), `bbox_2d`
   ([0,1000] integers), `severity`, `reasoning` (≥20 chars), `action`; plus `scene_summary`
   and `ego_context` (weather, time_of_day, road_type).
@@ -266,24 +255,22 @@ black src/
 - SFT output: one JSONL per split; each line = `{messages: [system, user(image+text), assistant(json)], images: [...]}`.
 - Counterfactual augmentation: ~30% of nuScenes frames get LLM-generated counterfactuals
   (e.g., "what if the pedestrian had stepped further into the lane?").
-- **SFT training** (`sft_trainer.py`): `DriveSenseSFTDataset` uses prefix-tokenization for label masking — tokenize full sequence AND prefix (messages[:-1] + add_generation_prompt=True); `prefix_len` marks the assistant start boundary; all tokens before it are masked to -100. `DriveSenseDataCollator` concatenates `pixel_values` along the patch dimension (dim=0) — never stack — because Qwen3-VL tiles images dynamically. `setup_model_and_processor()` loads `Qwen2_5_VLForConditionalGeneration` with LoRA; uses `use_reentrant=False` for gradient checkpointing; prefers `flash_attention_2`, falls back to `sdpa`. `train()` auto-detects latest checkpoint for resume; saves emergency checkpoint on failure; uploads LoRA artifact to W&B.
+- **SFT training** (`sft_trainer.py`): `DriveSenseSFTDataset` uses prefix-tokenization for label masking — tokenize full sequence AND prefix (messages[:-1] + add_generation_prompt=True); `prefix_len` marks the assistant start boundary; all tokens before it are masked to -100. `DriveSenseDataCollator` concatenates `pixel_values` along the patch dimension (dim=0) — never stack — because Qwen2.5-VL tiles images dynamically. `setup_model_and_processor()` loads `Qwen2_5_VLForConditionalGeneration` with LoRA; uses `use_reentrant=False` for gradient checkpointing; prefers `flash_attention_2`, falls back to `sdpa`. `train()` auto-detects latest checkpoint for resume; saves emergency checkpoint on failure; uploads LoRA artifact to W&B.
 - **Grounding evaluation** (`grounding.py`): `compute_iou` uses standard [x1,y1,x2,y2] intersection formula. `match_predictions_to_ground_truth` uses Hungarian assignment (scipy) with IoU cost matrix; falls back to greedy when scipy unavailable. `compute_grounding_metrics` takes prediction dicts with `frame_id`, `hazards`, `parse_failure` fields; tracks TP/FP/FN/TN per frame with no-hazard frames handled specially. `iou_at_threshold` = Jaccard (TP / (TP+FP+FN)); `false_positive_rate` = FP_no_hazard_frames / total_no_hazard_frames.
 - **Predictions JSONL format**: `{"frame_id": str, "raw_output": str, "parsed_output": dict|null, "parse_success": bool, "generation_time_ms": int}`. Parse failures are counted separately from detection misses.
 - **LLM judge** (`reasoning.py`): `LLMJudge` calls Claude with `JUDGE_SYSTEM_PROMPT` + per-dimension user prompt; `judge_batch` uses ThreadPoolExecutor with `max_concurrent` workers. `MockLLMJudge` returns random scores in [3,5] for all dimensions. `pass_rate` = fraction of examples scoring ≥3.5 on ALL three dimensions.
 - LoRA targets: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`.
-- AWQ quantization targets LLM decoder only; ViT stays in fp16 for accuracy.
 - TensorRT ViT uses fixed batch size (no dynamic batching) for deterministic latency.
 - **LoRA merge** (`merge_lora.py`): `LoRAMerger` loads base model in bfloat16, wraps with `PeftModel.from_pretrained`, calls `merge_and_unload()`, saves as .safetensors. `get_merge_stats` computes MD5 of config.json for reproducibility. `verify_merge` compares logits from adapter vs merged model with `torch.allclose(atol=1e-3)`. Merge MUST happen before quantization.
-- **AWQ quantization** (`quantize.py`): `AWQQuantizer` calls `model.named_modules()` to discover ViT module names (prefix match: "visual", "vision_model", "vit"); passes as `modules_to_not_convert` to `AutoAWQForCausalLM.quantize()`. Calibration data extracted from SFT train JSONL (system+user messages only, no assistant). Falls back to generic AV-domain strings if JSONL unavailable. `get_quantization_stats` reads `quant_config.json` for layer count.
 - **TensorRT ViT** (`tensorrt_vit.py`): `ViTExtractor` locates vision encoder at `model.visual` (or first child with "visual"/"vit" in name). `_ViTWrapper` accepts standard [B,C,H,W] input, provides fixed `grid_thw=[[1,16,24]]` for 672×448 images (28×28 patches → 16h×24w=384 patches). ONNX export: opset_version=17, no dynamic axes; falls back to `torch.jit.trace` on custom-op failure. TRT compilation: FP16, fixed workspace; falls back to `torch.compile(mode="reduce-overhead")` if TRT unavailable. All fallbacks documented in `fallback_info.json`. Benchmark measures mean/p50/p95/p99 latency + throughput with CUDA synchronization.
 - **Optimization CLI** (`run_optimize_model.py`): `--all` runs merge→quantize→TensorRT sequentially; each stage is idempotent (skips if sentinel file exists). `--mock` creates stub output files without loading any models — used in tests and CI.
-- **Serving layer** (`serve.py`): `DRIVESENSE_SYSTEM_PROMPT` and `SEVERITY_COLORS` are module-level constants shared between serve.py and demo/app.py. `DriveSenseVLLMServer` loads AWQ model via `LLM(quantization="awq", trust_remote_code=True)`; `predict_batch` uses `SamplingParams(temperature=0, stop=["<|im_end|>"])`; `benchmark()` uses `ThreadPoolExecutor` for concurrent load. `DriveSenseLocalInference` is lazy-loaded (model=None at init); `_run_inference` uses `apply_chat_template` + `do_sample=False`; both AWQ and full-precision models work.
+- **Serving layer** (`serve.py`): `DRIVESENSE_SYSTEM_PROMPT` and `SEVERITY_COLORS` are module-level constants shared between serve.py and demo/app.py. `DriveSenseVLLMServer` loads the served model via `LLM(trust_remote_code=True)`; `predict_batch` uses `SamplingParams(temperature=0, stop=["<|im_end|>"])`; `benchmark()` uses `ThreadPoolExecutor` for concurrent load. `DriveSenseLocalInference` is lazy-loaded (model=None at init); `_run_inference` uses `apply_chat_template` + `do_sample=False`; both quantized and full-precision models work.
 - **`draw_hazard_boxes`** (`serve.py`): Creates RGBA overlay image, fills each bbox with `alpha=50` (~20% opacity), solid `alpha=255` outline; label `"{label} ({severity})"` drawn 18px above box. Uses `Image.alpha_composite` then converts back to RGB. Falls back gracefully if PIL unavailable.
 - **bbox normalisation**: bbox coordinates in [0, 1000] → pixel: `x = bbox_x * w / 1000`. Same formula in both serve.py and demo/app.py (demo has standalone `draw_hazard_boxes` for Spaces compatibility).
 - **`_parse_json_output`** (`serve.py`): 3-stage parse: direct JSON → strip markdown fences → regex extract `{...}`. Returns `{"parse_failure": raw, "hazards": []}` on total failure.
 - **Benchmark CLI** (`run_benchmark.py`): `--local` times `DriveSenseLocalInference.predict()` sequentially; `--vllm` delegates to `server.benchmark()` (concurrent); `--vit-only` delegates to `ViTExtractor.benchmark_vit()`; `--mock` returns pre-baked numbers. Output timestamped to `outputs/benchmarks/benchmark_<ts>.json`. Synthetic images (solid colour) used when no `--image-dir` supplied.
 - **Production evaluator** (`production.py`): `ProductionEvaluator` reads all thresholds from `config["production"]["targets"]`. `load_benchmark_results(dir)` reads `local_bench.json` (→ T4 metrics) and `vllm_bench.json` (→ A100 metrics). ViT benchmark is optional: when None, `vit_tensorrt_p50_ms=None` and `vit_latency` target passes (True). Latency target is strict less-than (`p50 < target`, so equal fails). `quant_degradation_pct` derived from `label_agreement` field: `(1 - label_agreement) * 100`. `_get_p50(d)` tries `p50_ms` then falls back to `mean_ms`.
-- **Robustness evaluator** (`robustness.py`): Stratifies by `time_of_day`, `weather`, `location`, `ego_speed_bucket`, `source`. `_extract_stratum_value(gt_record, key)` checks three locations: `metadata{}` → `ego_context{}` → top-level → "unknown". `_speed_bucket(speed_kmh)`: < 20 → "0-20", < 40 → "20-40", else "40+". `_infer_source(frame_id)`: "dada" prefix → "dada2000" else "nuscenes". `_detection_rate_gap(stratum)`: max(DR) - min(DR) for groups with n_frames > 0. Empty groups handled via `contextlib.suppress` → `_empty_group_metrics()` (returns zeros). `ood_relative_performance` = dada2000_DR / nuscenes_DR (None-safe).
-- **Full evaluation CLI** (`run_full_evaluation.py`): `--level 1 2 3 4` selects which levels to run; `--mock` bypasses real model inference for all levels; `--mock-judge` uses MockLLMJudge for Level 2. Box-drawing report uses `_WIDTH=66`, `_row()` pads to exact width, `_bar()` for horizontal lines. `_mock_level3_metrics()`: T4 p50=432ms, A100 p50=187ms, VIT=21ms, fps=9.2, VRAM=3.1GB, deg=1.3%. `_mock_level4_metrics()`: day/night gap=0.072, weather=0.118, location=0.054, OOD=0.891. Level 3 reads stored JSON files (idempotent — no live GPU benchmark).
+- **Robustness evaluator** (`robustness.py`): Stratifies by `time_of_day`, `weather`, `location`, `ego_speed_bucket`, `source`. `_extract_stratum_value(gt_record, key)` checks three locations: `metadata{}` → `ego_context{}` → top-level → "unknown". `_speed_bucket(speed_kmh)`: < 20 → "0-20", < 40 → "20-40", else "40+". `_infer_source(frame_id)`: OOD-source prefix → OOD bucket else in-distribution. `_detection_rate_gap(stratum)`: max(DR) - min(DR) for groups with n_frames > 0. Empty groups handled via `contextlib.suppress` → `_empty_group_metrics()` (returns zeros). `ood_relative_performance` = ood_DR / in_dist_DR (None-safe).
+- **Full evaluation CLI** (`run_full_evaluation.py`): `--level 1 2 3 4` selects which levels to run; `--mock` bypasses real model inference for all levels; `--mock-judge` uses MockLLMJudge for Level 2. Box-drawing report uses `_WIDTH=66`, `_row()` pads to exact width, `_bar()` for horizontal lines. `_mock_level3_metrics()`: T4 p50=432ms, A100 p50=187ms, VIT=21ms, fps=9.2, VRAM=3.1GB, deg=1.3%. `_mock_level4_metrics()`: day/night gap=0.072, weather=0.118, location=0.054, OOD=(mock). Level 3 reads stored JSON files (idempotent — no live GPU benchmark).
 - **Gradio demo** (`demo/app.py`): `create_demo()` builds the `gr.Blocks` interface; `analyze_image()` calls `model.predict_with_visualization()`; returns `(annotated_image, json_str, latency_str)`. `_load_model()` is a global lazy-loader — safe under Gradio's single-threaded default mode. Config loaded from `configs/inference.yaml` if present, else `MODEL_PATH` env var. `demo/app.py` has standalone `draw_hazard_boxes` that mirrors `serve.py` for Spaces compatibility (no package install needed).
-- **HF Spaces**: `demo/README.md` has YAML frontmatter (`sdk: gradio`, `app_file: app.py`, hardware T4). `demo/requirements.txt` includes `autoawq>=0.2.0` and `qwen-vl-utils>=0.0.4`.
+- **HF Spaces**: `demo/README.md` has YAML frontmatter (`sdk: gradio`, `app_file: app.py`, hardware T4). `demo/requirements.txt` includes `bitsandbytes` and `qwen-vl-utils` for the NF4 demo.

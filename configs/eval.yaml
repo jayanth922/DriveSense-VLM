@@ -15,7 +15,7 @@ report_format: "json"                 # JSON report; also uploaded to W&B as tab
 # -----------------------------------------------------------------------------
 # Level 1: Grounding Accuracy
 # Measures how well the model localizes hazards with bounding box predictions.
-# Evaluated against ground-truth bbox annotations from nuScenes/DADA-2000.
+# Evaluated against ground-truth bbox annotations from nuScenes.
 # -----------------------------------------------------------------------------
 grounding:
   iou_threshold: 0.5                  # IoU >= 0.5 counts as a true positive
@@ -61,7 +61,7 @@ production:
     vit_tensorrt_latency_ms: 25       # ViT TensorRT forward pass latency (ms)
     throughput_a100_fps: 8            # Frames per second throughput on A100
     vram_t4_gb: 6.0                   # Peak VRAM usage on T4 (max 16GB free tier)
-    quant_degradation_pct: 2.0        # AWQ vs fp16 quality drop <= 2% on eval set
+    quant_degradation_pct: 2.0        # 4-bit vs fp16 quality drop <= 2% on eval set
   benchmark:
     warmup_iterations: 10             # Discard first N iterations (JIT/cache warmup)
     measure_iterations: 100           # Number of timed iterations for statistics

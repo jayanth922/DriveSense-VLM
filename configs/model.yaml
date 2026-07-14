@@ -46,10 +46,10 @@ quantization:
 # Vision / Image Processing
 # -----------------------------------------------------------------------------
 vision:
-  # Fixed 16:9 dashcam aspect ratio — matches nuScenes and DADA-2000 cameras.
-  # Qwen3-VL dynamic resolution uses patch counts, not raw pixel sizes.
+  # Fixed 16:9 dashcam aspect ratio — matches nuScenes cameras.
+  # Qwen2.5-VL dynamic resolution uses patch counts, not raw pixel sizes.
   image_resolution: [672, 448]   # [width, height]
-  # Patch token counts for Qwen3-VL processor (each patch = 28×28 pixels).
+  # Patch token counts for Qwen2.5-VL processor (each patch = 28×28 pixels).
   # min_pixels / max_pixels control how many visual tokens the image uses.
   min_pixels: 256
   max_pixels: 1280

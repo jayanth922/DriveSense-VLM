@@ -62,11 +62,11 @@ wandb:
   project: "drivesense-vlm"
   entity: null                        # Set to your W&B username or team name
   tags:
-    - "qwen3-vl-2b"
+    - "qwen2.5-vl-3b"
     - "lora-sft"
     - "av-perception"
     - "rare-hazard"
-  notes: "LoRA SFT on Qwen3-VL-2B for rare hazard detection (nuScenes + DADA-2000)"
+  notes: "LoRA SFT on Qwen2.5-VL-3B for rare hazard detection (nuScenes)"
 
 # -----------------------------------------------------------------------------
 # Early Stopping

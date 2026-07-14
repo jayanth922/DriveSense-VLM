@@ -45,11 +45,11 @@ recommended ego-vehicle action.
 
 | | |
 |---|---|
-| **Dataset**       | 2,754 nuScenes examples (rarity-filtered + LLM counterfactual augmentation) |
-| **Epochs**        | 5 |
-| **Eval loss**     | 0.312 |
+| **Dataset**       | 688 rare-hazard nuScenes v1.0-trainval frames (549/72/67), 3D-GT-projected boxes |
+| **Epochs**        | 8 |
+| **Train loss**    | 0.75 (train ≈ val, no overfitting) |
 | **LoRA targets**  | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj` |
-| **Hardware**      | Google Colab Pro A100 |
+| **Hardware**      | Single A100 |
 
 ---
 
@@ -57,20 +57,24 @@ recommended ego-vehicle action.
 
 ### Detection quality
 
-| Metric | Value |
-|---|---|
-| Parse rate (valid JSON)   | 99.1% |
-| Mean IoU                  | 0.550 |
-| Severity classification   | 82.9% accuracy |
-| F1 (hazard detection)     | 0.107 |
-
-### Optimization
+Level-1 grounding, v2 test set (n = 67; measured, reported exactly as observed):
 
 | Metric | Value |
 |---|---|
-| Compression ratio       | 3.1× (vs. fp16 base) |
-| VRAM reduction          | 68% |
-| `torch.compile` speedup | 1.48× over eager |
+| Output parse rate          | 76% |
+| Detection F1 @ IoU 0.5     | 1.4% |
+| Detection Recall @ IoU 0.5 | 1.0% |
+| Mean best-pair IoU         | 0.12 |
+| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 33% / 20% / 5% |
+
+These numbers are low and reported honestly — the small, narrow training set (688 frames, ~8
+nuScenes logs, mostly daytime) is the dominant limiter. See Limitations.
+
+### Demo quantization
+
+The T4 Spaces demo loads the model with bitsandbytes NF4 (4-bit, double-quant, bf16 compute) to
+fit the free-tier 16 GB GPU. This is a memory-fit measure for the demo; no separately benchmarked
+compression/latency numbers are claimed here.
 
 ---
 
@@ -126,16 +130,15 @@ print(processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_token
 
 ## Limitations
 
-- **Low recall (6.1%)** — the model is conservative and frequently misses hazards present in
-  the scene; suitable for ranking / triage, not as a sole detector.
-- **Label fragmentation** — semantically similar hazards (e.g. `pedestrian_in_path`,
-  `pedestrian_crossing`) are treated as distinct classes by the F1 calculator, depressing
-  the score.
-- **Limited geographic / sensor diversity** — trained on three nuScenes blobs only; expect
-  degraded performance on dashcams that differ substantially in mounting, FoV, or weather.
-- **No temporal context** — single-frame inference. Hazards that require motion cues (e.g.
-  cut-ins, pedestrian intent) are weaker.
-- **Quantization noise** — NF4 reduces VRAM but introduces a small accuracy delta vs. fp16.
+- **Low grounding accuracy** — Detection F1 @ IoU 0.5 is 1.4% and mean best-pair IoU is 0.12;
+  the model localizes something near a hazard on ~1/3 of frames but rarely reaches IoU 0.5.
+- **Small, narrow training set** — 688 frames from ~8 nuScenes logs, predominantly daytime, two
+  cities; expect degraded performance on dashcams that differ in mounting, FoV, or conditions.
+- **Dense-frame parse failures (~24%)** — on the densest multi-hazard frames the output exceeds
+  the generation token budget and ends mid-JSON (16/67 test frames, ~1,164 tokens at the 1024
+  cap). Root cause is undertraining on a small dataset; hazard-object repetition may contribute.
+- **No temporal context** — single-frame inference; hazards needing motion cues are weaker.
+- **Quantization noise** — the NF4 demo introduces a small accuracy delta vs. bf16.
 
 ---
 
@@ -157,7 +160,7 @@ print(processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_token
 - **GitHub repo**: <https://github.com/jayanth922/DriveSense-VLM>
 - **Colab demo**: [`notebooks/05_demo.ipynb`](https://colab.research.google.com/github/jayanth922/DriveSense-VLM/blob/main/notebooks/05_demo.ipynb)
 - **Base model**: [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
-- **Datasets**: [nuScenes](https://www.nuscenes.org/), DADA-2000
+- **Dataset**: [nuScenes](https://www.nuscenes.org/) (v1.0-trainval)
 
 ## License
 
