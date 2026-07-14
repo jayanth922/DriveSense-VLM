@@ -466,7 +466,11 @@ def _generate_single(
                 **inputs_gpu,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
-                temperature=1.0,
+                # Break greedy repetition loops (the model would otherwise emit the
+                # same hazard object dozens of times on dense frames and never close
+                # the JSON, hitting the token cap -> parse failure).
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=3,
             )
         prompt_len = inputs["input_ids"].shape[1]
         return processor.batch_decode(  # type: ignore[union-attr]
