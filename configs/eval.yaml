@@ -102,7 +102,10 @@ eval_data:
 # Used by run_generate_predictions.py and --generate-predictions flag.
 # -----------------------------------------------------------------------------
 generation:
-  max_new_tokens: 512
+  # 512 truncated dense multi-hazard frames mid-JSON (parse failures counted as
+  # misses). 1024 recovers most; the densest still overflow — the real fix is
+  # more concise reasoning in the labels, not a bigger budget.
+  max_new_tokens: 1024
   temperature: 0.0                    # Greedy decoding for reproducible evaluation
   adapter_path: "outputs/training/lora_adapter"
   predictions_path: "outputs/predictions/test_predictions.jsonl"
