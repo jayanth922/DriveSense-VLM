@@ -62,6 +62,9 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Scripts**: `scripts/` — download, HPC setup, sanity check
 - **SLURM jobs**: `slurm/*.sbatch` — HPC job submission scripts
 - **Tests**: `tests/` — pytest test suite
+- **Streaming miner**: `src/drivesense/data/streaming_miner.py` — bounded-storage nuScenes blob image fetch (shopping list, stratified sample, streaming tar extract, resume manifest, auth resolution)
+- **Streaming miner CLI**: `scripts/run_streaming_miner.py` — `--dry-run`, `--build-list-only`, `--blob-dir`, `--blob-urls-file`; one blob at a time under a disk cap. Config in `configs/data.yaml` (`mining:`)
+- **Miner outputs**: `outputs/data/mining_shoppinglist.jsonl`, `mining_manifest.json` (resume), `mining_report.json`
 - **Unified dataset**: `src/drivesense/data/dataset.py` — UnifiedDatasetBuilder + DriveSenseDataset
 - **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder
 - **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files

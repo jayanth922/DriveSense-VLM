@@ -117,3 +117,46 @@ preprocessing:
   normalize: true
   mean: [0.485, 0.456, 0.406]          # ImageNet mean (used for ViT input normalization)
   std: [0.229, 0.224, 0.225]           # ImageNet std
+
+# -----------------------------------------------------------------------------
+# Streaming Image Miner (bounded-storage blob fetch)
+# Fetch CAM_FRONT keyframe images for shopping-list frames, ONE blob at a time,
+# never storing more than a single blob tarball on disk. See run_streaming_miner.py.
+# -----------------------------------------------------------------------------
+mining:
+  metadata_path: "outputs/data/spark_processed/metadata.jsonl"  # global 34k-keyframe metadata
+  shoppinglist_path: "outputs/data/mining_shoppinglist.jsonl"   # selected frames to fetch
+  manifest_path: "outputs/data/mining_manifest.json"            # resume state (completed blobs)
+  report_path: "outputs/data/mining_report.json"                # final per-blob report
+  dataroot: "${HPC_DATA_ROOT:~/data}/nuscenes"   # real dataroot; images land in samples/CAM_FRONT/
+  temp_dir: "${HPC_DATA_ROOT:~/data}/nuscenes/_mining_tmp"  # transient blob tarball dir
+
+  # Frame selection ----------------------------------------------------------
+  hazard_band: [3, 20]              # keep frames with 3..20 GT hazards (inclusive)
+  count_mode: "hazard_class"        # "hazard_class" (box_sourcing map) or "num_annotations"
+  strata_edges: [3, 6, 9, 13, 21]   # hazard-count bucket edges for STRATIFIED sampling
+  target_count: 4500                # frames to sample from the band (0 = take the whole band)
+  seed: 42
+
+  # Bounded storage ----------------------------------------------------------
+  disk_cap_gb: 50                   # abort if the miner's transient footprint exceeds this
+
+  # The 7 trainval image blobs still needed (already have images from 01/04/08).
+  needed_blobs:
+    - "v1.0-trainval02_blobs.tgz"
+    - "v1.0-trainval03_blobs.tgz"
+    - "v1.0-trainval05_blobs.tgz"
+    - "v1.0-trainval06_blobs.tgz"
+    - "v1.0-trainval07_blobs.tgz"
+    - "v1.0-trainval09_blobs.tgz"
+    - "v1.0-trainval10_blobs.tgz"
+
+  # nuScenes auth — blobs are NOT public; they need a nuScenes account + accepted
+  # license and are served via EXPIRING signed URLs. Provide ONE of:
+  #   1. blob_urls_file: a JSON map {"v1.0-trainvalNN_blobs.tgz": "<signed url>"}
+  #      (or set env NUSCENES_BLOB_URLS to that file)
+  #   2. NUSCENES_TOKEN env + base_url below (legacy header auth; may 403 in the
+  #      signed-URL era — kept for parity with download_nuscenes.sh)
+  #   3. --blob-dir DIR with pre-downloaded tarballs (fully offline; still bounded)
+  blob_urls_file: ""               # e.g. outputs/data/nuscenes_blob_urls.json
+  base_url: "https://s3.amazonaws.com/data.nuscenes.org/public/trainval"
