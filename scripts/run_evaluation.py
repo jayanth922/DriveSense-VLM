@@ -337,9 +337,7 @@ def _generate_one(
             out_ids = model.generate(  # type: ignore[union-attr]
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
-                repetition_penalty=1.3,      # break greedy repetition loops
-                no_repeat_ngram_size=3,
+                do_sample=False,  # repetition_penalty/no_repeat_ngram corrupt JSON — see run_generate_predictions
             )
         prompt_len = inputs["input_ids"].shape[1]
         return processor.batch_decode(  # type: ignore[union-attr]
