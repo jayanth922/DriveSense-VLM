@@ -2,12 +2,15 @@
 """Annotation v2 regeneration (run in Colab): GT boxes + describe-only VLM + gate.
 
 Pipeline (see docs/annotation_v2.md):
-  curate rarity frames → per-scene dedup → source tight GT boxes →
-  describe-only Claude pass (severity/reasoning/action; NEVER boxes) →
+  curate rarity frames (or --shopping-list) → source tight GT boxes →
+  describe-only Claude pass via the Message Batches API (50% cheaper; async) →
   SFT JSONL (scene-level split) → HARD validation gate.
 
 The VLM never localizes: label + bbox_2d come from nuScenes GT; the VLM only
 fills severity/reasoning/action. VLM-failed frames are excluded, not templated.
+The describe pass is cost-optimised (batch, not real-time) and resumable: a
+per-frame cache holds finished annotations and a batch-id state file lets a
+restart poll in-flight batches instead of resubmitting them.
 
 Usage (Colab, after cloning the repo and mounting Drive):
     export ANTHROPIC_API_KEY=...          # required
@@ -22,14 +25,11 @@ Usage (Colab, after cloning the repo and mounting Drive):
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import random
-import re
 import subprocess
 import sys
-import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -59,7 +59,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--frames-per-scene", type=int, default=3,
                    help="Cap kept frames per scene to remove near-duplicate keyframes.")
     p.add_argument("--max-frames", type=int, default=None, help="Cap total frames (dry runs).")
-    p.add_argument("--model", default="claude-sonnet-4-5")
+    p.add_argument("--model", default="claude-sonnet-5",
+                   help="Describe model (default claude-sonnet-5). A/B a few frames vs "
+                        "claude-haiku-4-5-20251001 with --max-frames.")
     p.add_argument("--min-coverage", type=float, default=0.95,
                    help="Required fraction of selected frames with images (non-dry).")
     p.add_argument("--dry", action="store_true", help="Skip the image-coverage assertion.")
@@ -164,109 +166,38 @@ def scene_meta(nusc: object, tok: str) -> tuple[str, dict]:
     }
 
 
-def make_describe(model: str) -> object:
-    """Build the describe-only VLM call (returns a function). Claude fills fields, not boxes."""
-    import anthropic  # noqa: PLC0415
-
-    client = anthropic.Anthropic(max_retries=5)
-
-    def describe(img_path: str, hazards: list[dict]) -> dict | None:
-        with open(img_path, "rb") as f:
-            b64 = base64.standard_b64encode(f.read()).decode()
-        given = [{"label": h["label"], **({"bbox_2d": h["bbox_2d"]} if "bbox_2d" in h else {})} for h in hazards]
-        user = [
-            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-            {"type": "text", "text": "Given hazards (keep order): " + json.dumps(given)
-             + "\nFill severity/reasoning/action for each in the SAME order. JSON only."},
-        ]
-        last = None
-        for a in range(4):
-            try:
-                r = client.messages.create(model=model, max_tokens=4096, system=_SYS_PROMPT,
-                                           messages=[{"role": "user", "content": user}])
-                if r.stop_reason == "max_tokens":
-                    last = "hit max_tokens"; continue
-                m = re.search(r"\{.*\}", r.content[0].text, re.DOTALL)
-                if m:
-                    return json.loads(m.group(0))
-                last = "no JSON"
-            except Exception as exc:  # noqa: BLE001
-                last = repr(exc); time.sleep(min(30, 3 * (2 ** a)))
-        print("  describe() failed:", last)
+def _read_cache(cache_dir: str | None, tok: str) -> dict | None:
+    """Load a cached per-frame annotation, or ``None`` (missing/corrupt)."""
+    if not cache_dir:
+        return None
+    cf = Path(cache_dir) / f"{tok}.json"
+    if not cf.exists():
+        return None
+    try:
+        return json.loads(cf.read_text())
+    except (json.JSONDecodeError, OSError):
         return None
 
-    return describe
+
+def _write_cache(cache_dir: str | None, tok: str, ann: dict) -> None:
+    """Persist a per-frame annotation to the resume cache (no-op if disabled)."""
+    if not cache_dir:
+        return
+    cf = Path(cache_dir) / f"{tok}.json"
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    cf.write_text(json.dumps(ann))
 
 
-def _cached_annotate(
-    nusc: object, tok: str, img: str, meta: dict, describe: object, cache_dir: str | None
-) -> tuple[dict | None, int]:
-    """Return ``(annotation, was_cached)`` using a per-frame JSON cache.
-
-    A cache hit skips both box-sourcing and the (paid) describe call, so a
-    killed/disconnected run resumes instead of restarting from zero. The cache is
-    keyed by sample token; clear ``<out-dir>/describe_cache`` to force regeneration.
-    """
-    from drivesense.data.box_sourcing import source_boxes_for_frame  # noqa: PLC0415
-
-    cf = Path(cache_dir) / f"{tok}.json" if cache_dir else None
-    if cf and cf.exists():
-        try:
-            return json.loads(cf.read_text()), 1
-        except (json.JSONDecodeError, OSError):
-            pass  # corrupt/partial cache entry → rebuild it
-    kept, _ = source_boxes_for_frame(nusc, tok)
-    ann = _annotate(img, kept, meta, describe)
-    if ann is not None and cf:
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        cf.write_text(json.dumps(ann))
-    return ann, 0
+def _no_hazard_ann(meta: dict) -> dict:
+    """Annotation for a frame with no box-sourced hazards (no API call needed)."""
+    return {"hazards": [], "scene_summary": "No annotatable hazard in the front camera view.",
+            "ego_context": {"weather": meta["weather"], "time_of_day": meta["time_of_day"],
+                            "road_type": "urban"}}
 
 
-def build_records(
-    nusc: object, tokens: list[str], describe: object, cache_dir: str | None = None
-) -> list[dict]:
-    """Box-source + describe each frame; GT box/label authoritative. Returns SFT records.
-
-    Resumable via a per-frame cache under ``cache_dir`` (see :func:`_cached_annotate`).
-    """
-    from drivesense.data.annotation import SFTDataFormatter  # noqa: PLC0415
-
-    fmt = SFTDataFormatter()
-    records: list[dict] = []
-    failed = missing = cached = 0
-    for i, tok in enumerate(tokens):
-        s = nusc.get("sample", tok)  # type: ignore[attr-defined]
-        img = nusc.get_sample_data_path(s["data"]["CAM_FRONT"])  # type: ignore[attr-defined]
-        if not os.path.exists(img):
-            missing += 1
-            continue
-        sc, meta = scene_meta(nusc, tok)
-        ann, was_cached = _cached_annotate(nusc, tok, img, meta, describe, cache_dir)
-        if ann is None:
-            failed += 1
-            continue
-        cached += was_cached
-        rec = fmt.format_single_example({"image_path": img, "annotations": ann,
-                                         "frame_id": tok, "source": "nuscenes"})
-        rec.update({"split": "", "scene_token": sc, **meta})
-        records.append(rec)
-        if (i + 1) % 25 == 0:
-            print(f"  {i + 1}/{len(tokens)} ({failed} VLM fail, {missing} missing, {cached} cached)")
-    print(f"built {len(records)} records, {failed} VLM failures, {missing} missing, "
-          f"{cached} from cache")
-    return records
-
-
-def _annotate(img: str, kept: list[dict], meta: dict, describe: object) -> dict | None:
-    """Assemble one frame's annotation (GT boxes + VLM-described fields)."""
+def _merge_hazards(kept: list[dict], meta: dict, vlm: dict) -> dict:
+    """Merge GT boxes/labels (authoritative) with the VLM-described fields."""
     ctx = {"weather": meta["weather"], "time_of_day": meta["time_of_day"], "road_type": "urban"}
-    if not kept:
-        return {"hazards": [], "scene_summary": "No annotatable hazard in the front camera view.",
-                "ego_context": ctx}
-    vlm = describe(img, kept)  # type: ignore[operator]
-    if vlm is None:
-        return None
     by_label = vlm.get("hazards", [])
     haz: list[dict] = []
     for j, h in enumerate(kept):
@@ -278,6 +209,94 @@ def _annotate(img: str, kept: list[dict], meta: dict, describe: object) -> dict 
         haz.append(entry)
     return {"hazards": haz, "scene_summary": vlm.get("scene_summary", ""),
             "ego_context": vlm.get("ego_context", ctx)}
+
+
+def _plan_frames(nusc: object, tokens: list[str], cache_dir: str | None) -> tuple[dict, dict, list]:
+    """Box-source every frame locally; classify into cached / no-hazard / needs-describe.
+
+    Returns ``(plan, anns, jobs)`` — ``plan`` maps token→{img,sc,meta,kept};
+    ``anns`` holds finished annotations (from cache or the no-hazard shortcut);
+    ``jobs`` is the ``(token, img, kept)`` list needing a paid describe call.
+    """
+    from drivesense.data.box_sourcing import source_boxes_for_frame  # noqa: PLC0415
+
+    plan: dict[str, dict] = {}
+    anns: dict[str, dict] = {}
+    jobs: list = []
+    missing = 0
+    for tok in tokens:
+        img = _cam_front_path(nusc, tok)
+        if not os.path.exists(img):
+            missing += 1
+            continue
+        sc, meta = scene_meta(nusc, tok)
+        plan[tok] = {"img": img, "sc": sc, "meta": meta}
+        cached = _read_cache(cache_dir, tok)
+        if cached is not None:
+            anns[tok] = cached
+            continue
+        kept, _ = source_boxes_for_frame(nusc, tok)
+        if not kept:
+            anns[tok] = _no_hazard_ann(meta)
+            _write_cache(cache_dir, tok, anns[tok])
+            continue
+        plan[tok]["kept"] = kept
+        jobs.append((tok, img, kept))
+    print(f"planned {len(plan)} frames ({missing} missing image, {len(anns)} already done, "
+          f"{len(jobs)} to describe via Batch API)")
+    return plan, anns, jobs
+
+
+def _batch_describe(args: argparse.Namespace, cache_dir: str | None,
+                    plan: dict, anns: dict, jobs: list) -> None:
+    """Run the Message Batches describe pass; resume prior batches, then submit new."""
+    import anthropic  # noqa: PLC0415
+    from drivesense.data import batch_describe as bd  # noqa: PLC0415
+
+    state = bd.BatchState(Path(args.out_dir) / "batch_state.json")
+    if not jobs and not state.ids:
+        return
+    client = anthropic.Anthropic()
+
+    def on_result(tok: str, vlm: dict) -> None:
+        p = plan.get(tok)
+        if p is None or "kept" not in p:
+            return
+        anns[tok] = _merge_hazards(p["kept"], p["meta"], vlm)
+        _write_cache(cache_dir, tok, anns[tok])
+
+    bd.drain_existing(client, state, on_result)                 # resume any in-flight batches
+    remaining = [(t, img, hz) for (t, img, hz) in jobs if t not in anns]
+    print(f"batch describe: submitting {len(remaining)} frames "
+          f"({len(jobs) - len(remaining)} recovered from prior batches)")
+    bd.submit_new(client, remaining, state, args.model, _SYS_PROMPT, on_result)
+
+
+def build_records(nusc: object, tokens: list[str], args: argparse.Namespace,
+                  cache_dir: str | None) -> list[dict]:
+    """Box-source locally, describe via the Batch API (50% cheaper), assemble SFT records.
+
+    GT box/label are authoritative; the VLM only fills severity/reasoning/action.
+    Resumable: the per-frame cache holds finished annotations and a batch-id state
+    file lets a restart poll in-flight batches instead of resubmitting them.
+    """
+    from drivesense.data.annotation import SFTDataFormatter  # noqa: PLC0415
+
+    fmt = SFTDataFormatter()
+    plan, anns, jobs = _plan_frames(nusc, tokens, cache_dir)
+    _batch_describe(args, cache_dir, plan, anns, jobs)
+
+    records: list[dict] = []
+    for tok, p in plan.items():
+        ann = anns.get(tok)
+        if ann is None:  # batch errored/expired for this frame — retried on next run
+            continue
+        rec = fmt.format_single_example({"image_path": p["img"], "annotations": ann,
+                                         "frame_id": tok, "source": "nuscenes"})
+        rec.update({"split": "", "scene_token": p["sc"], **p["meta"]})
+        records.append(rec)
+    print(f"built {len(records)} records ({len(plan) - len(records)} without annotation)")
+    return records
 
 
 def split_and_write(records: list[dict], out_dir: Path, seed: int) -> dict[str, Path]:
@@ -346,7 +365,8 @@ def main() -> None:
     cache_dir = None if args.no_cache else str(Path(args.out_dir) / "describe_cache")
     if cache_dir:
         print(f"describe cache: {cache_dir} (resumable — re-run to continue after a drop)")
-    records = build_records(nusc, tokens, make_describe(args.model), cache_dir=cache_dir)
+    print(f"describe pass: Message Batches API (50% off), model={args.model}")
+    records = build_records(nusc, tokens, args, cache_dir)
     paths = split_and_write(records, Path(args.out_dir), args.seed)
     if run_gate(paths):
         print("\n✅ ALL SPLITS PASSED THE GATE. Labels are safe to train on (retrain is a separate step).")
