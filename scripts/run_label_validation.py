@@ -15,7 +15,10 @@ Fails on any of:
     * max_single_box_freq    > --max-single-box-freq      (default 0.02)
     * boxes with area        > 40% of frame               (any)
     * no_hazard / high_density hazards carrying a bbox     (any)
-    * one identical box shared across                      > --max-dup-frames frames
+    * one identical box shared across  > max(--max-dup-frames, --max-box-frame-share × N)
+      frames, where N is the number of frames — the cross-frame-dup limit SCALES with
+      dataset size (a static roadside object naturally recurs more at scale), while the
+      absolute floor still catches true collapse (v1 put one box on 780 frames).
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import re
 import sys
 from collections import Counter
@@ -52,8 +56,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--labels", required=True, help="Path to the labels JSONL/JSON.")
     p.add_argument("--min-unique-ratio", type=float, default=0.50)
     p.add_argument("--max-single-box-freq", type=float, default=0.02)
-    p.add_argument("--max-dup-frames", type=int, default=5)
+    p.add_argument("--max-dup-frames", type=int, default=5,
+                   help="Absolute floor for frames sharing one identical box (small sets).")
+    p.add_argument("--max-box-frame-share", type=float, default=0.005,
+                   help="Cross-frame-dup limit as a fraction of frame count; effective "
+                        "limit = max(--max-dup-frames, this*N). Scales the gate to set size.")
     return p.parse_args()
+
+
+def _dup_limit(n_frames: int, args: argparse.Namespace) -> int:
+    """Effective 'frames sharing one box' limit — scales with dataset size.
+
+    ``max(--max-dup-frames, ceil(--max-box-frame-share × N))``: the absolute floor
+    keeps small sets strict; the share term lets a legitimately recurring static
+    object grow with the dataset while still tripping on true collapse (v1 had one
+    box on 780 frames — far above 0.5% of any realistic frame count).
+    """
+    return max(args.max_dup_frames, math.ceil(args.max_box_frame_share * n_frames))
 
 
 def _parse_json(text: object) -> dict | None:
@@ -102,6 +121,7 @@ def collect_stats(records: list[dict]) -> dict:
     """
     box_counter: Counter = Counter()               # bbox tuple -> count
     box_frames: dict[tuple, set] = {}              # bbox tuple -> {frame_id}
+    n_frames = len(records)
     total_boxes = 0
     oversized = 0
     exempt_with_box = 0
@@ -132,6 +152,7 @@ def collect_stats(records: list[dict]) -> dict:
         ((len(f), b) for b, f in box_frames.items()), default=(0, ())
     )
     return {
+        "n_frames": n_frames,
         "total_boxes": total_boxes,
         "unique_boxes": unique,
         "unique_box_ratio": round(unique / total_boxes, 4) if total_boxes else 0.0,
@@ -148,6 +169,10 @@ def collect_stats(records: list[dict]) -> dict:
 def evaluate_gate(stats: dict, args: argparse.Namespace) -> list[str]:
     """Return the list of gate failures (empty == pass)."""
     failures: list[str] = []
+    dup_limit = _dup_limit(stats.get("n_frames", 0), args)
+    logger.info("cross-frame dup limit: %d  (max(%d, %.2f%% of %d frames))",
+                dup_limit, args.max_dup_frames, args.max_box_frame_share * 100,
+                stats.get("n_frames", 0))
     # Schema violation is checked first — it is independent of box count.
     if stats["exempt_labels_with_box"] > 0:
         failures.append(
@@ -162,21 +187,24 @@ def evaluate_gate(stats: dict, args: argparse.Namespace) -> list[str]:
             f"unique_box_ratio {stats['unique_box_ratio']} < {args.min_unique_ratio}"
         )
     # Collapse = a box repeated across MANY frames. A handful of benign repeats
-    # (a static object across a few kept keyframes, capped by per-scene dedup) is
-    # fine, and on a small split its 3/N ratio would otherwise trip spuriously.
-    # Gate the ratio check on an ABSOLUTE repeat count (the cross-frame-dup limit)
-    # so it is robust to split size.
-    if stats["top_box_count"] > args.max_dup_frames and stats["max_single_box_freq"] > args.max_single_box_freq:
+    # (a static object across a few kept keyframes) is fine, and on a small split
+    # its k/N ratio would otherwise trip spuriously. Gate the ratio check on the
+    # size-scaled ABSOLUTE repeat count so it is robust to split size.
+    if (stats["top_box_count"] > dup_limit
+            and stats["max_single_box_freq"] > args.max_single_box_freq):
         failures.append(
             f"max_single_box_freq {stats['max_single_box_freq']} > "
             f"{args.max_single_box_freq} (box {stats['top_box']} ×{stats['top_box_count']})"
         )
     if stats["oversized_gt_40pct"] > 0:
         failures.append(f"{stats['oversized_gt_40pct']} boxes exceed 40% frame area")
-    if stats["max_frames_sharing_one_box"] > args.max_dup_frames:
+    # Cross-frame duplication limit SCALES with dataset size (see _dup_limit): a
+    # static roadside object legitimately recurs on more keyframes as N grows.
+    if stats["max_frames_sharing_one_box"] > dup_limit:
         failures.append(
-            f"one box appears on {stats['max_frames_sharing_one_box']} frames "
-            f"> {args.max_dup_frames} (box {stats['most_shared_box']})"
+            f"one box appears on {stats['max_frames_sharing_one_box']} frames > {dup_limit} "
+            f"(limit = max({args.max_dup_frames}, {args.max_box_frame_share:.2%} of "
+            f"{stats.get('n_frames', 0)} frames); box {stats['most_shared_box']})"
         )
     return failures
 
