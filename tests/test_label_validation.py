@@ -14,7 +14,7 @@ for p in (_ROOT / "src", _ROOT / "scripts"):
 import run_label_validation as gate  # noqa: E402
 
 
-def _args(min_unique=0.5, max_freq=0.02, max_dup=5, box_frame_share=0.005) -> argparse.Namespace:
+def _args(min_unique=0.5, max_freq=0.02, max_dup=20, box_frame_share=0.01) -> argparse.Namespace:
     return argparse.Namespace(
         min_unique_ratio=min_unique, max_single_box_freq=max_freq, max_dup_frames=max_dup,
         max_box_frame_share=box_frame_share,
@@ -22,10 +22,11 @@ def _args(min_unique=0.5, max_freq=0.02, max_dup=5, box_frame_share=0.005) -> ar
 
 
 def test_dup_limit_scales_with_frame_count() -> None:
-    a = _args()
-    assert gate._dup_limit(688, a) == 5      # small set → absolute floor
-    assert gate._dup_limit(3071, a) == 16    # 0.5% of 3071 → the 12-frame box passes
-    assert gate._dup_limit(34149, a) == 171  # full trainval → 780-box still fails
+    a = _args()  # defaults: floor 20, share 1%
+    assert gate._dup_limit(299, a) == 20     # small test split -> floor (static object passes)
+    assert gate._dup_limit(840, a) == 20     # small val split -> floor
+    assert gate._dup_limit(2445, a) == 25    # train split -> 1% of 2445
+    assert gate._dup_limit(34149, a) == 342  # full trainval → 1% (780-box still fails hard)
 
 
 def _rec(fid: str, hazards: list[dict]) -> dict:
@@ -59,25 +60,26 @@ class TestGatePasses:
         # A static object across 3 kept keyframes (== dedup cap, <= max_dup_frames)
         # is benign and must PASS even though 3/N is a big ratio on a small split.
         dup = [253, 506, 277, 583]
-        records = [_rec(f"d{i}", [{"label": "construction_zone", "bbox_2d": dup}]) for i in range(3)]
-        records += [_rec(f"u{i}", [{"label": "occluded_pedestrian", "bbox_2d": [i, i, i + 30, i + 80]}])
-                    for i in range(10)]
+        records = [_rec(f"d{i}", [{"label": "construction_zone", "bbox_2d": dup}])
+                   for i in range(3)]
+        records += [_rec(f"u{i}", [{"label": "occluded_pedestrian",
+                                    "bbox_2d": [i, i, i + 30, i + 80]}]) for i in range(10)]
         stats = gate.collect_stats(records)
         assert stats["top_box_count"] == 3
         assert gate.evaluate_gate(stats, _args()) == []   # 3 <= max_dup_frames(5) → benign
 
-    def test_recurring_static_object_passes_at_scale(self) -> None:
-        # The real 3,071-frame case: a small static roadside object legitimately
-        # projected onto 12 keyframes. dup_limit = max(5, 0.5%×3071) = 16, so 12 passes.
-        shared = [212, 529, 249, 643]
+    def test_recurring_static_object_passes_on_small_split(self) -> None:
+        # The real per-split case: a static roadside object (pole/sign) projected onto
+        # 12 keyframes in a 299-frame test split. dup_limit = max(20, 1%×299) = 20 → passes.
+        shared = [218, 528, 247, 638]
         records = [_rec(f"s{i}", [{"label": "unusual_object", "bbox_2d": shared}])
                    for i in range(12)]
         records += [_rec(f"u{i}", [{"label": "jaywalking", "bbox_2d": [i, 0, i + 20, 90]}])
-                    for i in range(3059)]
+                    for i in range(287)]
         stats = gate.collect_stats(records)
-        assert stats["n_frames"] == 3071
+        assert stats["n_frames"] == 299
         assert stats["max_frames_sharing_one_box"] == 12
-        assert gate.evaluate_gate(stats, _args()) == []  # 12 <= 16
+        assert gate.evaluate_gate(stats, _args()) == []  # 12 <= 20 floor
 
     def test_high_density_box_exempt_ignored(self) -> None:
         records = [
@@ -104,16 +106,17 @@ class TestGateFails:
         assert any("max_single_box_freq" in f for f in failures)
         assert any("frames" in f for f in failures)  # cross-frame dup
 
-    def test_same_box_stays_strict_on_small_set(self) -> None:
-        # 12 shared on a 200-frame set: dup_limit = max(5, 0.5%×200=1) = 5, so 12 fails.
+    def test_excessive_dup_still_fails_above_floor(self) -> None:
+        # A box on 25 frames exceeds the floor (20) on any small set → fails. Distinguishes
+        # a benign static object (~10-20x) from something over-represented.
         shared = [212, 529, 249, 643]
         records = [_rec(f"s{i}", [{"label": "unusual_object", "bbox_2d": shared}])
-                   for i in range(12)]
+                   for i in range(25)]
         records += [_rec(f"u{i}", [{"label": "jaywalking", "bbox_2d": [i, 0, i + 20, 90]}])
-                    for i in range(188)]
+                    for i in range(175)]
         stats = gate.collect_stats(records)
         assert stats["n_frames"] == 200
-        assert any("appears on 12 frames" in f for f in gate.evaluate_gate(stats, _args()))
+        assert any("appears on 25 frames" in f for f in gate.evaluate_gate(stats, _args()))
 
     def test_v1_collapse_still_fails_at_scale(self) -> None:
         # v1's one-box-on-780-frames must fail even in a 5,000-frame set

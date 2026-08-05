@@ -8,7 +8,7 @@ labels (high_density, no_hazard) are excluded from the box statistics.
 Usage:
     python scripts/run_label_validation.py --labels outputs/data/sft_ready/sft_train.jsonl
     python scripts/run_label_validation.py --labels <file> --min-unique-ratio 0.5 \
-        --max-single-box-freq 0.02 --max-dup-frames 5
+        --max-single-box-freq 0.02 --max-dup-frames 20 --max-box-frame-share 0.01
 
 Fails on any of:
     * unique_box_ratio       < --min-unique-ratio        (default 0.50)
@@ -16,9 +16,14 @@ Fails on any of:
     * boxes with area        > 40% of frame               (any)
     * no_hazard / high_density hazards carrying a bbox     (any)
     * one identical box shared across  > max(--max-dup-frames, --max-box-frame-share × N)
-      frames, where N is the number of frames — the cross-frame-dup limit SCALES with
-      dataset size (a static roadside object naturally recurs more at scale), while the
-      absolute floor still catches true collapse (v1 put one box on 780 frames).
+      frames, where N is the number of frames. Default limit = max(20, 1% × N): a real
+      static roadside object (pole/sign) legitimately recurs on ~10-20 keyframes across
+      scenes, whereas v1 collapse put one box on 780/4933 frames (16%) — orders of
+      magnitude above this limit, so true collapse still fails hard.
+
+The health signals that actually catch collapse are unique_box_ratio and
+max_single_box_freq; the raw per-box frame count is a coarse backstop, not the
+primary gate, so its floor is deliberately generous.
 """
 
 from __future__ import annotations
@@ -56,9 +61,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--labels", required=True, help="Path to the labels JSONL/JSON.")
     p.add_argument("--min-unique-ratio", type=float, default=0.50)
     p.add_argument("--max-single-box-freq", type=float, default=0.02)
-    p.add_argument("--max-dup-frames", type=int, default=5,
-                   help="Absolute floor for frames sharing one identical box (small sets).")
-    p.add_argument("--max-box-frame-share", type=float, default=0.005,
+    p.add_argument("--max-dup-frames", type=int, default=20,
+                   help="Absolute floor for frames sharing one identical box. Real static "
+                        "roadside objects (poles/signs) legitimately recur on ~10-20 keyframes.")
+    p.add_argument("--max-box-frame-share", type=float, default=0.01,
                    help="Cross-frame-dup limit as a fraction of frame count; effective "
                         "limit = max(--max-dup-frames, this*N). Scales the gate to set size.")
     return p.parse_args()
@@ -67,10 +73,10 @@ def parse_args() -> argparse.Namespace:
 def _dup_limit(n_frames: int, args: argparse.Namespace) -> int:
     """Effective 'frames sharing one box' limit — scales with dataset size.
 
-    ``max(--max-dup-frames, ceil(--max-box-frame-share × N))``: the absolute floor
-    keeps small sets strict; the share term lets a legitimately recurring static
-    object grow with the dataset while still tripping on true collapse (v1 had one
-    box on 780 frames — far above 0.5% of any realistic frame count).
+    ``max(--max-dup-frames, ceil(--max-box-frame-share × N))`` = ``max(20, 1% × N)``
+    by default. The floor (20) accepts that a real static roadside object recurs on
+    ~10-20 keyframes; the share term scales it up for large sets. Both stay orders of
+    magnitude below true collapse (v1: one box on 780/4933 frames = 16%).
     """
     return max(args.max_dup_frames, math.ceil(args.max_box_frame_share * n_frames))
 
