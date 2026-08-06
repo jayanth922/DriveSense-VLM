@@ -154,7 +154,10 @@ def run_dry_run(config: dict, mock: bool = False) -> None:
     dataset = DriveSenseSFTDataset(train_file, processor, max_seq_length=max_seq)
     logger.info("Dataset size: %d examples", len(dataset))
 
-    n_samples = min(3, len(dataset))
+    # Time a real per-device micro-batch (bs = per_device_train_batch_size) so the
+    # estimate reflects the actual model + config, not a guessed constant.
+    pdb = int(config.get("training", {}).get("per_device_train_batch_size", 4))
+    n_samples = min(max(1, pdb), len(dataset))
     examples = [dataset[i] for i in range(n_samples)]
     collator = DriveSenseDataCollator(processor, max_seq_length=max_seq)
     batch = collator(examples)
@@ -167,28 +170,76 @@ def run_dry_run(config: dict, mock: bool = False) -> None:
     with torch.no_grad():
         outputs = model(**batch_gpu)
 
-    _print_dry_run_stats(model, dataset, config, outputs.loss.item())
+    micro_s = None if mock else _measure_step_seconds(model, batch_gpu)
+    _print_dry_run_stats(model, dataset, config, outputs.loss.item(), micro_s, n_samples)
+
+
+def _measure_step_seconds(model: object, batch_gpu: dict) -> float | None:
+    """Median seconds for one real forward+backward micro-step (``None`` off CUDA).
+
+    Replaces the old hardcoded 75 s/step guess: the estimate is now grounded in the
+    actual attention impl, image-token count, batch size and gradient-checkpointing
+    setting on THIS GPU. 2 warmup + 5 measured iters, CUDA-synchronised.
+    """
+    import time
+
+    import torch
+    if not torch.cuda.is_available():
+        return None
+    model.train()
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    times: list[float] = []
+    for i in range(7):
+        for p in trainable:
+            p.grad = None
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        out = model(**batch_gpu)
+        out.loss.backward()
+        torch.cuda.synchronize()
+        if i >= 2:
+            times.append(time.perf_counter() - t0)
+    model.zero_grad(set_to_none=True)
+    return sorted(times)[len(times) // 2] if times else None
 
 
 def _print_dry_run_stats(
-    model: object, dataset: object, config: dict, loss: float
+    model: object, dataset: object, config: dict, loss: float,
+    micro_s: float | None = None, microbatch_size: int | None = None,
 ) -> None:
-    """Print a summary of model parameters and estimated training time."""
+    """Print a summary of model parameters and estimated training time.
+
+    ``micro_s`` is the MEASURED seconds per forward+backward micro-batch (from
+    :func:`_measure_step_seconds`); when present the time estimate is real, not the
+    old 75 s/step guess. ``None`` (e.g. ``--mock`` or CPU) falls back to a clearly
+    labelled rough estimate.
+    """
     import torch
 
     try:
-        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)  # type: ignore[union-attr]
-        total = sum(p.numel() for p in model.parameters())  # type: ignore[union-attr]
+        params = list(model.parameters())  # type: ignore[union-attr]
+        trainable = sum(p.numel() for p in params if p.requires_grad)
+        total = sum(p.numel() for p in params)
     except Exception:  # noqa: BLE001
         trainable, total = 0, 0
 
     t = config.get("training", {})
-    bs_eff = t.get("per_device_train_batch_size", 4) * t.get("gradient_accumulation_steps", 4)
+    grad_accum = t.get("gradient_accumulation_steps", 4)
+    bs_eff = t.get("per_device_train_batch_size", 4) * grad_accum
     n = len(dataset)  # type: ignore[arg-type]
     steps_per_epoch = max(1, n // bs_eff)
     epochs = t.get("num_epochs", 5)
     est_steps = steps_per_epoch * epochs
-    est_time_h = est_steps * 75 / 3600  # ~75s/step on A100
+
+    if micro_s is not None:
+        s_per_step = micro_s * grad_accum
+        est_time_h = est_steps * s_per_step / 3600
+        time_note = (f"{est_time_h:.2f} h  [MEASURED {s_per_step:.2f}s/optim-step = "
+                     f"{micro_s:.3f}s/microbatch(bs={microbatch_size}) x {grad_accum} accum]")
+    else:
+        est_time_h = est_steps * 75 / 3600
+        time_note = (f"{est_time_h:.1f} h  [ROUGH 75s/step guess — NOT measured; "
+                     "run on GPU without --mock]")
 
     print("\n" + "=" * 60)
     print("  DriveSense-VLM — Dry-run Summary")
@@ -198,7 +249,7 @@ def _print_dry_run_stats(
     print(f"  Effective batch  : {bs_eff}")
     print(f"  Steps / epoch    : {steps_per_epoch}")
     print(f"  Total steps      : {est_steps}  ({epochs} epochs)")
-    print(f"  Est. time (A100) : {est_time_h:.1f} h")
+    print(f"  Est. time        : {time_note}")
     print(f"  Forward pass loss: {loss:.4f}")
     if torch.cuda.is_available():
         alloc = torch.cuda.memory_allocated() / 1e9

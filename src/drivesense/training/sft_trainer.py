@@ -382,6 +382,10 @@ def setup_model_and_processor(config: dict) -> tuple:
     vision_cfg = config.get("vision", {})
     training_cfg = config.get("training", {})
 
+    if torch.cuda.is_available():          # tf32: free speedup for fp32 matmuls (bf16 unaffected)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     torch_dtype = getattr(torch, model_cfg.get("torch_dtype", "bfloat16"))
     attn_key = model_cfg.get("attn_implementation", "flash_attention_2")
     attn_impl = _resolve_attn_implementation(attn_key)
