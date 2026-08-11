@@ -247,11 +247,12 @@ def test_auth_instructions_are_concrete():
 
 def test_manifest_persists_and_resumes(tmp_path):
     path = tmp_path / "m.json"
+    sig = "sigA"
     m = sm.MiningManifest(path)
-    assert not m.is_done("b1")
-    m.mark_done("b1", matched=12, hwm_gb=24.5)
+    assert not m.is_done("b1", sig)
+    m.mark_done("b1", sig, matched=12, hwm_gb=24.5)
     m2 = sm.MiningManifest(path)  # reload from disk
-    assert m2.is_done("b1")
+    assert m2.is_done("b1", sig)
     assert m2.per_blob["b1"] == 12
     assert m2.total_matched() == 12
     assert m2.disk_hwm_gb == 24.5
@@ -259,9 +260,51 @@ def test_manifest_persists_and_resumes(tmp_path):
 
 def test_manifest_hwm_is_max(tmp_path):
     m = sm.MiningManifest(tmp_path / "m.json")
-    m.mark_done("b1", 1, 30.0)
-    m.mark_done("b2", 1, 20.0)
+    m.mark_done("b1", "sig", 1, 30.0)
+    m.mark_done("b2", "sig", 1, 20.0)
     assert m.disk_hwm_gb == 30.0
+
+
+def test_shoppinglist_signature_changes_with_content():
+    a = [{"basename": "x.jpg"}, {"basename": "y.jpg"}]
+    b = [{"basename": "y.jpg"}, {"basename": "x.jpg"}]  # same set, different order
+    c = [{"basename": "x.jpg"}, {"basename": "y.jpg"}, {"basename": "z.jpg"}]
+    assert sm.shoppinglist_signature(a) == sm.shoppinglist_signature(b)  # order-independent
+    assert sm.shoppinglist_signature(a) != sm.shoppinglist_signature(c)  # content-sensitive
+
+
+def test_manifest_done_for_old_list_is_not_done_for_new_list(tmp_path):
+    # The actual reported bug: a blob completed against a SMALLER shopping list
+    # must be re-scanned once the list grows, not skipped forever.
+    m = sm.MiningManifest(tmp_path / "m.json")
+    sig_small = sm.shoppinglist_signature([{"basename": "a.jpg"}])
+    sig_big = sm.shoppinglist_signature([{"basename": "a.jpg"}, {"basename": "b.jpg"}])
+    m.mark_done("blob1", sig_small, matched=1, hwm_gb=10.0)
+    assert m.is_done("blob1", sig_small)
+    assert not m.is_done("blob1", sig_big)          # different list -> must re-scan
+
+
+def test_manifest_per_blob_accumulates_across_scans(tmp_path):
+    # A second scan (against a bigger list) finds only the NEW matches; the
+    # cumulative per-blob total must add up, not overwrite.
+    m = sm.MiningManifest(tmp_path / "m.json")
+    m.mark_done("blob1", "sigA", matched=5, hwm_gb=10.0)
+    m.mark_done("blob1", "sigB", matched=3, hwm_gb=12.0)  # rescanned, 3 NEW matches
+    assert m.per_blob["blob1"] == 8
+    assert m.total_matched() == 8
+    assert m.disk_hwm_gb == 12.0
+
+
+def test_legacy_manifest_is_not_treated_as_done(tmp_path):
+    # A manifest written by the pre-fix code (blob-name-only completion) must
+    # NOT be trusted against any signature — every blob should re-scan once.
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps({"completed_blobs": ["blob1"], "per_blob": {"blob1": 5},
+                                "disk_hwm_gb": 10.0}))
+    m = sm.MiningManifest(path)
+    assert m.is_legacy
+    assert not m.is_done("blob1", "any-sig")
+    assert m.per_blob["blob1"] == 5  # historical count preserved for reporting
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +317,80 @@ def test_shoppinglist_roundtrip(tmp_path):
     p = tmp_path / "sub" / "list.jsonl"
     sm.write_shoppinglist(frames, p)
     assert sm.load_shoppinglist(p) == frames
+
+
+# ---------------------------------------------------------------------------
+# CLI: plan_blobs (signature-aware skip + --rescan-blobs/--rescan-all override)
+# ---------------------------------------------------------------------------
+
+
+def _load_cli():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "run_streaming_miner", Path(__file__).resolve().parent.parent / "scripts"
+        / "run_streaming_miner.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _plan_args(rescan_blobs=None, rescan_all=False):
+    from argparse import Namespace
+    return Namespace(blob_dir=None, blob_urls_file=None,
+                     rescan_blobs=rescan_blobs, rescan_all=rescan_all)
+
+
+def _plan_cfg(tmp_path, blob="b1.tgz"):
+    return {
+        "manifest_path": tmp_path / "manifest.json",
+        "blobs": [blob],
+        "base_url": "http://example",
+        "_mining": {},
+    }
+
+
+def test_plan_blobs_skips_done_for_matching_signature(tmp_path):
+    cli = _load_cli()
+    sig = sm.shoppinglist_signature([{"basename": "a.jpg"}])
+    manifest = sm.MiningManifest(tmp_path / "manifest.json")
+    manifest.mark_done("b1.tgz", sig, matched=1, hwm_gb=1.0)
+    plan, _ = cli.plan_blobs(_plan_cfg(tmp_path), _plan_args(), sig)
+    assert plan == [("b1.tgz", "done", "")]
+
+
+def test_plan_blobs_rescans_when_signature_differs(tmp_path):
+    # This is the exact reported bug scenario: a blob "done" for a smaller list
+    # must be re-planned (not "done") once the shopping list changes.
+    cli = _load_cli()
+    old_sig = sm.shoppinglist_signature([{"basename": "a.jpg"}])
+    new_sig = sm.shoppinglist_signature([{"basename": "a.jpg"}, {"basename": "b.jpg"}])
+    manifest = sm.MiningManifest(tmp_path / "manifest.json")
+    manifest.mark_done("b1.tgz", old_sig, matched=1, hwm_gb=1.0)
+    plan, all_ok = cli.plan_blobs(_plan_cfg(tmp_path), _plan_args(), new_sig)
+    assert plan[0][0] == "b1.tgz" and plan[0][1] != "done"
+    assert not all_ok  # no source resolves in this test (no blob_dir/url/token) -> "missing"
+
+
+def test_plan_blobs_rescan_all_forces_replan_despite_matching_signature(tmp_path):
+    cli = _load_cli()
+    sig = sm.shoppinglist_signature([{"basename": "a.jpg"}])
+    manifest = sm.MiningManifest(tmp_path / "manifest.json")
+    manifest.mark_done("b1.tgz", sig, matched=1, hwm_gb=1.0)
+    plan, _ = cli.plan_blobs(_plan_cfg(tmp_path), _plan_args(rescan_all=True), sig)
+    assert plan[0][1] != "done"
+
+
+def test_plan_blobs_rescan_blobs_forces_replan_for_named_blob_only(tmp_path):
+    cli = _load_cli()
+    sig = sm.shoppinglist_signature([{"basename": "a.jpg"}])
+    manifest = sm.MiningManifest(tmp_path / "manifest.json")
+    manifest.mark_done("b1.tgz", sig, matched=1, hwm_gb=1.0)
+    manifest.mark_done("b2.tgz", sig, matched=1, hwm_gb=1.0)
+    cfg = _plan_cfg(tmp_path); cfg["blobs"] = ["b1.tgz", "b2.tgz"]
+    plan, _ = cli.plan_blobs(cfg, _plan_args(rescan_blobs=["b1.tgz"]), sig)
+    kinds = dict(((b, k) for b, k, _ in plan))
+    assert kinds["b1.tgz"] != "done"   # forced
+    assert kinds["b2.tgz"] == "done"   # untouched
 
 
 if __name__ == "__main__":

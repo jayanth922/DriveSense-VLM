@@ -80,6 +80,12 @@ def parse_args() -> argparse.Namespace:
                    help="JSON map {blob: signed_url} (or set NUSCENES_BLOB_URLS)")
     p.add_argument("--metadata", default=None, help="Override mining.metadata_path")
     p.add_argument("--dataroot", default=None, help="Override mining.dataroot")
+    p.add_argument("--rescan-blobs", nargs="+", default=None,
+                   help="Force these blobs to be re-planned even if already completed "
+                        "against the current shopping list (manual manifest override). "
+                        "Normally unnecessary — a changed shopping list auto-triggers this.")
+    p.add_argument("--rescan-all", action="store_true",
+                   help="Force ALL blobs to be re-planned, ignoring manifest completion.")
     return p.parse_args()
 
 
@@ -183,18 +189,27 @@ def print_strata(frames: list[dict], edges: list[int]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plan_blobs(cfg: dict, args: argparse.Namespace) -> tuple[list[tuple[str, str, str]], bool]:
+def plan_blobs(
+    cfg: dict, args: argparse.Namespace, list_sig: str,
+) -> tuple[list[tuple[str, str, str]], bool]:
     """Resolve a source for each pending blob; return (plan, all_resolved).
 
-    plan entries are ``(blob, kind, ref)``; completed blobs are marked ``kind="done"``.
+    plan entries are ``(blob, kind, ref)``; a blob is only ``"done"`` if it was
+    already scanned against THIS shopping-list signature (``list_sig``) — see
+    :class:`~drivesense.data.streaming_miner.MiningManifest`. ``--rescan-blobs``/
+    ``--rescan-all`` force a re-plan regardless of manifest state.
     """
     manifest = sm.MiningManifest(cfg["manifest_path"])
+    if manifest.is_legacy:
+        logger.warning("manifest predates per-shopping-list completion tracking — "
+                       "every blob will be re-scanned once against the current list.")
+    force = set(args.rescan_blobs or [])
     url_map = sm.load_blob_urls(cfg["_mining"], args.blob_urls_file)
     token = os.environ.get("NUSCENES_TOKEN")
     plan: list[tuple[str, str, str]] = []
     all_ok = True
     for blob in cfg["blobs"]:
-        if manifest.is_done(blob):
+        if manifest.is_done(blob, list_sig) and not args.rescan_all and blob not in force:
             plan.append((blob, "done", ""))
             continue
         kind, ref = sm.resolve_blob_source(
@@ -271,18 +286,20 @@ def _guard_free_space(cfg: dict) -> None:
             f"{cfg['disk_cap_gb']:.0f} GB headroom for one blob")
 
 
-def run_streaming(cfg: dict, plan: list[tuple[str, str, str]], frames: list[dict]) -> dict:
+def run_streaming(
+    cfg: dict, plan: list[tuple[str, str, str]], frames: list[dict], list_sig: str,
+) -> dict:
     """Execute the streaming loop over pending blobs; return the report dict."""
     manifest = sm.MiningManifest(cfg["manifest_path"])
     wanted = {f["basename"] for f in frames}
     running_total = manifest.total_matched()
     for blob, kind, ref in plan:
         if kind == "done":
-            logger.info("[%s] already complete — skipping", blob)
+            logger.info("[%s] already complete for this shopping list — skipping", blob)
             continue
         matched, footprint = process_blob(blob, kind, ref, cfg, wanted)
         running_total += matched
-        manifest.mark_done(blob, matched, footprint)
+        manifest.mark_done(blob, list_sig, matched, footprint)
         logger.info("[%s] running total fetched: %d | disk HWM: %.1f GB",
                     blob, running_total, manifest.disk_hwm_gb)
     return _build_report(cfg, manifest, len(wanted))
@@ -334,7 +351,9 @@ def main() -> None:
     if args.build_list_only:
         return
 
-    plan, all_ok = plan_blobs(cfg, args)
+    list_sig = sm.shoppinglist_signature(frames)
+    logger.info("shopping-list signature: %s (%d frames)", list_sig, len(frames))
+    plan, all_ok = plan_blobs(cfg, args, list_sig)
     print_plan(plan, cfg, len(frames))
 
     pending = [(b, k, r) for b, k, r in plan if k not in ("done",)]
@@ -350,7 +369,7 @@ def main() -> None:
                     len(pending), len(plan) - len(pending))
         return
 
-    report = run_streaming(cfg, plan, frames)
+    report = run_streaming(cfg, plan, frames, list_sig)
     Path(cfg["report_path"]).parent.mkdir(parents=True, exist_ok=True)
     Path(cfg["report_path"]).write_text(json.dumps(report, indent=2))
     logger.info("Wrote report → %s", cfg["report_path"])

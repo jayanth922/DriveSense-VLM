@@ -17,6 +17,7 @@ license and are served via expiring signed URLs. See ``resolve_blob_source``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -506,34 +507,63 @@ class MiningManifest:
     Tracks which blobs are fully processed so a re-run skips them. Per-frame
     idempotency is handled separately by on-disk image presence, so the manifest
     stays small. Persisted as a single JSON file.
+
+    Completion is keyed by ``(blob, shopping-list signature)``, NOT blob name
+    alone. A blob's raw tarball is deleted after each pass, so if the shopping
+    list later grows (or otherwise changes) and that blob holds frames only in
+    the NEW target set, a blob-name-only "done" flag would skip it forever even
+    though it was never scanned against the current list — the bug this fixes.
+    Growing the list re-tags every pending blob as not-done for the new
+    signature, which correctly re-streams it; already-extracted images are still
+    skipped at the file level (see :func:`stream_extract_blob`), so nothing is
+    re-fetched — only re-downloaded-and-rescanned, since the tarball itself
+    isn't kept.
     """
 
     def __init__(self, path: str | Path) -> None:
         """Load existing state from ``path`` if present, else start empty."""
         self.path = Path(path)
-        self.completed_blobs: list[str] = []
-        self.per_blob: dict[str, int] = {}
+        self.completed: dict[str, str] = {}   # blob -> shopping-list signature
+        self.per_blob: dict[str, int] = {}     # blob -> CUMULATIVE frames matched
         self.disk_hwm_gb: float = 0.0
+        self.is_legacy: bool = False
         if self.path.exists():
             data = json.loads(self.path.read_text())
-            self.completed_blobs = data.get("completed_blobs", [])
+            if "completed" in data:
+                self.completed = data["completed"]
+            elif "completed_blobs" in data:
+                # Pre-fix manifest: completion wasn't tied to a shopping-list
+                # signature, so those entries can't be trusted against ANY list
+                # (old or new) — don't carry them forward as done. This makes
+                # every blob naturally re-scan once on the first post-fix run.
+                self.is_legacy = True
             self.per_blob = data.get("per_blob", {})
             self.disk_hwm_gb = float(data.get("disk_hwm_gb", 0.0))
 
-    def is_done(self, blob: str) -> bool:
-        """True if ``blob`` was already fully processed."""
-        return blob in self.completed_blobs
+    def is_done(self, blob: str, list_sig: str) -> bool:
+        """True if ``blob`` was already fully scanned against THIS shopping list."""
+        return self.completed.get(blob) == list_sig
 
-    def mark_done(self, blob: str, matched: int, hwm_gb: float) -> None:
-        """Record a completed blob and persist immediately (crash-safe)."""
-        if blob not in self.completed_blobs:
-            self.completed_blobs.append(blob)
-        self.per_blob[blob] = matched
+    def mark_done(self, blob: str, list_sig: str, matched: int, hwm_gb: float) -> None:
+        """Record a completed (blob, list_sig) scan and persist (crash-safe).
+
+        ``matched`` accumulates onto any prior count for this blob — a later
+        scan against a bigger list finds only the NEW frames (already-present
+        ones are skipped by :func:`stream_extract_blob`), so per-blob totals
+        must add up across scans, not overwrite.
+        """
+        self.completed[blob] = list_sig
+        self.per_blob[blob] = self.per_blob.get(blob, 0) + matched
         self.disk_hwm_gb = max(self.disk_hwm_gb, hwm_gb)
         self.save()
 
+    @property
+    def completed_blobs(self) -> list[str]:
+        """Blobs completed against their CURRENTLY recorded signature."""
+        return list(self.completed.keys())
+
     def total_matched(self) -> int:
-        """Total frames fetched across all recorded blobs."""
+        """Total frames fetched across all recorded blobs (all scans, cumulative)."""
         return sum(self.per_blob.values())
 
     def save(self) -> None:
@@ -541,8 +571,28 @@ class MiningManifest:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps({
-            "completed_blobs": self.completed_blobs,
+            "completed": self.completed,
             "per_blob": self.per_blob,
             "disk_hwm_gb": round(self.disk_hwm_gb, 2),
         }, indent=2))
         tmp.replace(self.path)
+
+
+def shoppinglist_signature(frames: list[dict]) -> str:
+    """Deterministic signature of a shopping list's basenames.
+
+    Used as the manifest's completion key so a blob "done" for an OLD (smaller
+    or just different) shopping list is correctly treated as not-done — and
+    re-scanned — once the list changes.
+
+    Args:
+        frames: Shopping-list dicts (need ``basename``).
+
+    Returns:
+        A short stable hex digest of the sorted basename set.
+    """
+    h = hashlib.sha256()
+    for name in sorted({f["basename"] for f in frames}):
+        h.update(name.encode())
+        h.update(b"\n")
+    return h.hexdigest()[:16]
