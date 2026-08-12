@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,11 +34,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Parse args, optionally patch resume flag, and call :func:`train`."""
+    """Parse args and call :func:`train`, passing --resume as an explicit override."""
     args = _parse_args()
 
     try:
-        from drivesense.training.sft_trainer import _load_all_configs, train
+        from drivesense.training.sft_trainer import train
     except ImportError as exc:
         logger.error(
             "Training dependencies not installed: %s\n"
@@ -48,13 +47,10 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if args.resume:
-        # Patch the config to use "latest" resume mode
-        config = _load_all_configs(Path(args.config))
-        training_cfg = config.get("training", {})
-        training_cfg["resume_from_checkpoint"] = "latest"
-
-    metrics = train(args.config)
+    # train() ALWAYS reloads config from args.config, so mutating a locally-loaded
+    # config dict here would be silently discarded (this was the --resume bug —
+    # it never actually resumed). Pass the resume choice as an explicit override.
+    metrics = train(args.config, resume_override="latest" if args.resume else None)
     logger.info("Training complete: %s", metrics)
 
 

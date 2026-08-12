@@ -329,9 +329,6 @@ def main() -> None:
     args = parse_args()
     config = load_full_config(args.config)
 
-    if args.resume:
-        config.setdefault("training", {})["resume_from_checkpoint"] = "latest"
-
     if args.debug:
         config = apply_debug_overrides(config)
 
@@ -351,7 +348,10 @@ def main() -> None:
         # train() applies the debug overrides when this is set (no temp config file).
         os.environ["DRIVESENSE_DEBUG"] = "1"
 
-    metrics = train(args.config)
+    # train() ALWAYS reloads config from args.config — mutating a locally-loaded
+    # config dict here would have no effect (that was the --resume bug). Pass the
+    # resume choice as an explicit override instead.
+    metrics = train(args.config, resume_override="latest" if args.resume else None)
     logger.info("Training complete.")
     print("\n--- Training Metrics ---")
     print(json.dumps(metrics, indent=2))

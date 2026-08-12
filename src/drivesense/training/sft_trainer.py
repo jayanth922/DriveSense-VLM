@@ -552,7 +552,7 @@ def setup_trainer(
 # ---------------------------------------------------------------------------
 
 
-def train(config_path: str | Path) -> dict:
+def train(config_path: str | Path, resume_override: str | None = None) -> dict:
     """Main SFT training entry point.
 
     Loads all configs, builds the Qwen3-VL model with LoRA, trains, evaluates,
@@ -560,6 +560,12 @@ def train(config_path: str | Path) -> dict:
 
     Args:
         config_path: Path to ``configs/training.yaml``.
+        resume_override: If set, overrides the freshly-loaded config's
+            ``resume_from_checkpoint`` (e.g. ``"latest"``). This function ALWAYS
+            reloads config from ``config_path`` — a caller that mutates its own
+            already-loaded config dict and then calls ``train(config_path)`` has
+            no effect, since that mutated object is discarded. This parameter is
+            the only way for a caller to actually change resume behavior here.
 
     Returns:
         Metrics dict with ``train_loss``, ``eval_loss``, ``epochs_trained``,
@@ -570,6 +576,8 @@ def train(config_path: str | Path) -> dict:
     config = _load_all_configs(config_path)
 
     training_cfg = config.get("training", {})
+    if resume_override is not None:
+        training_cfg["resume_from_checkpoint"] = resume_override
     output_dir = Path(training_cfg.get("output_dir", "outputs/training"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -589,6 +597,10 @@ def train(config_path: str | Path) -> dict:
     trainer = setup_trainer(model, processor, train_ds, val_ds, training_args, callbacks)
 
     resume_from = _resolve_checkpoint(training_cfg, output_dir)
+    if resume_from:
+        logger.info("Resuming from checkpoint: %s", resume_from)
+    else:
+        logger.info("Starting training from scratch (no checkpoint)")
     try:
         train_result = trainer.train(resume_from_checkpoint=resume_from)
         eval_result = trainer.evaluate()
@@ -688,9 +700,26 @@ def _resolve_checkpoint(training_cfg: dict, output_dir: Path) -> str | None:
     """Determine the checkpoint path to resume from, if any."""
     resume_from = training_cfg.get("resume_from_checkpoint")
     if resume_from == "latest":
-        checkpoints = sorted(output_dir.glob("checkpoint-*"))
+        checkpoints = _sorted_checkpoints(output_dir)
         return str(checkpoints[-1]) if checkpoints else None
     return str(resume_from) if resume_from else None
+
+
+def _sorted_checkpoints(output_dir: Path) -> list[Path]:
+    """List ``checkpoint-<step>`` dirs sorted by NUMERIC step, ascending.
+
+    HF Trainer names checkpoints ``checkpoint-<global_step>``. A plain string
+    sort misorders once step counts cross a leading-digit boundary — e.g.
+    ``"checkpoint-1356"`` sorts BEFORE ``"checkpoint-904"`` lexicographically
+    ('1' < '9') even though 1356 > 904 — silently resolving "latest" to a STALE
+    checkpoint. Malformed directory names sort first (key -1), never as latest.
+    """
+    def step_of(p: Path) -> int:
+        try:
+            return int(p.name.rsplit("-", 1)[-1])
+        except ValueError:
+            return -1
+    return sorted(output_dir.glob("checkpoint-*"), key=step_of)
 
 
 def _finalize_training(
