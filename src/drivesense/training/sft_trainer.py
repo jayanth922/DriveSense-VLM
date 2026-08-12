@@ -681,11 +681,16 @@ def _build_callbacks(
     from drivesense.training.callbacks import (
         EarlyStoppingCallback,
         GPUMemoryCallback,
+        ResumeGradientFixCallback,
         SamplePredictionCallback,
         TrainingMetricsCallback,
     )
     es_cfg = config.get("early_stopping", {})
     return [
+        # Must run every train() call (fresh or resumed) — on_train_begin fires
+        # after Trainer's own checkpoint reload, so this is a no-op on a fresh
+        # run and the fix for the resume grad-disconnection bug on a resumed one.
+        ResumeGradientFixCallback(),
         GPUMemoryCallback(),
         TrainingMetricsCallback(),
         EarlyStoppingCallback(

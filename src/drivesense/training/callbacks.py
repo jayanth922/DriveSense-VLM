@@ -91,6 +91,70 @@ class GPUMemoryCallback(TrainerCallback):  # type: ignore[misc]
                 wandb.log(metrics, step=state.global_step)
 
 
+class ResumeGradientFixCallback(TrainerCallback):  # type: ignore[misc]
+    """Re-establishes trainable state after HF Trainer's checkpoint reload.
+
+    ``trainer.train(resume_from_checkpoint=...)`` loads the saved weights
+    INSIDE the call — for a PEFT model this typically goes through
+    ``model.load_adapter(...)`` — AFTER ``setup_model_and_processor()`` already
+    ran ``get_peft_model()`` + ``gradient_checkpointing_enable()`` once. Two
+    things ``get_peft_model`` sets up on that FIRST, fresh init are not
+    guaranteed to survive a later adapter reload, depending on the installed
+    transformers/peft version:
+
+      1. LoRA parameter ``requires_grad`` — some ``load_adapter`` code paths
+         default to loading for inference (``is_trainable=False``), silently
+         freezing the reloaded LoRA weights.
+      2. The gradient-checkpointing input-require-grad hook — normally
+         registered once (by ``get_peft_model``/``enable_input_require_grads``)
+         on the embedding module; needed because the frozen base model would
+         otherwise produce an activation graph with no ``requires_grad`` leaf,
+         which gradient checkpointing then disconnects from autograd entirely.
+
+    Either failure mode (or the model being left in eval mode) produces the
+    same symptom: ``RuntimeError: element 0 of tensors does not require grad
+    and does not have a grad_fn`` on the very first backward pass — ONLY when
+    resuming, since a fresh run never goes through this second load.
+
+    ``on_train_begin`` fires after Trainer's checkpoint load and before the
+    first training step, so reasserting all three here is safe on a fresh run
+    (harmless no-ops — nothing was frozen or unregistered) and required on a
+    resumed run.
+    """
+
+    def on_train_begin(
+        self,
+        args: Any,  # noqa: ANN401
+        state: Any,  # noqa: ANN401
+        control: Any,  # noqa: ANN401
+        model: Any = None,  # noqa: ANN401
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        """Re-arm LoRA grads, the input-require-grad hook, and train mode.
+
+        Args:
+            args: ``TrainingArguments`` from the Trainer.
+            state: ``TrainerState`` (unused).
+            control: ``TrainerControl`` (not modified).
+            model: The (possibly just-reloaded) model being trained.
+            **kwargs: Ignored extra keyword arguments.
+        """
+        if model is None:
+            return
+        model.train()
+        trainable = 0
+        for name, p in model.named_parameters():
+            if "lora_" in name:
+                p.requires_grad_(True)
+                trainable += 1
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        logger.info(
+            "on_train_begin: re-armed %d LoRA params + input-require-grad hook (mode=train)",
+            trainable,
+        )
+
+
 def _gpu_memory_metrics() -> dict[str, float]:
     """Return current GPU memory stats as a W&B-friendly dict."""
     allocated = torch.cuda.memory_allocated() / 1e9

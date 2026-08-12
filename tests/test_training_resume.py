@@ -25,7 +25,11 @@ _SRC = _ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from drivesense.training.sft_trainer import _resolve_checkpoint, _sorted_checkpoints  # noqa: E402
+from drivesense.training.sft_trainer import (  # noqa: E402
+    _build_callbacks,
+    _resolve_checkpoint,
+    _sorted_checkpoints,
+)
 
 
 def _load_module(rel_path: str, name: str):
@@ -191,6 +195,19 @@ class TestTrainResumeIntegration:
 
         _, kwargs = fake_trainer.train.call_args
         assert kwargs["resume_from_checkpoint"] is None
+
+
+# ---------------------------------------------------------------------------
+# ResumeGradientFixCallback must actually be wired into every training run —
+# the resume grad-disconnection bug fix is a no-op if it's built but not used.
+# ---------------------------------------------------------------------------
+
+
+def test_build_callbacks_includes_resume_gradient_fix():
+    from drivesense.training.callbacks import ResumeGradientFixCallback
+
+    callbacks = _build_callbacks({"early_stopping": {}}, MagicMock(), MagicMock())
+    assert any(isinstance(cb, ResumeGradientFixCallback) for cb in callbacks)
 
 
 if __name__ == "__main__":
