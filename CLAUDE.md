@@ -50,6 +50,11 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Drift monitor**: `src/drivesense/monitoring/drift.py` — DriftMonitor (PSI per stratification dimension: weather/time_of_day/location/hazard_class), population_stability_index, psi_severity (none<0.10, moderate<0.20, else significant), extract_dimension_values (hazard_class is multi-valued per record)
 - **Drift demo**: `scripts/demo_drift_monitor.py` — runs standalone (synthetic fallback data, or `--labels` a real sft_*_enriched.jsonl); splits in half, shows no-drift vs a deliberately weather-skewed incoming batch
 - **Observability docs**: `docs/OBSERVABILITY.md` — what each of the three tools does + how to plug into CI/production
+- **Failure stratification lib**: `src/drivesense/eval/failure_stratification.py` — SIZE_TIERS (tiny<1%/small1-5%/medium5-15%/large>15%), load_stratified_ground_truth (keeps weather/time_of_day/location, unlike grounding._normalise_gt), build_hazard_rows (per-hazard best_iou via grounding.compute_iou, not per-frame), cross_tabulate, rank_buckets, build_report
+- **Failure stratification CLI**: `scripts/analyze_failure_stratification.py` — takes predictions.jsonl + enriched GT, no model/GPU; finds which size tier/condition grounds worst
+- **Mining targets lib**: `src/drivesense/data/mining_targets.py` — proxied_size_tier (distance_to_ego bands, NOT measured), infer_weather/infer_time_of_day (scene_description keywords, mirrors scene_meta()), score_frame, select_targets (drop-in shopping-list schema); `location` dimension is NOT derivable from metadata.jsonl — dropped with a warning
+- **Mining targets CLI**: `scripts/select_mining_targets.py` — takes the stratification report + global metadata.jsonl, writes a new mining_shoppinglist.jsonl targeting the worst bucket; run the miner with `--no-rebuild-list` after, or the implicit-rebuild default overwrites it
+- **Closed-loop docs**: `docs/CLOSED_LOOP.md` — analyze → select → mine → label → gate → train → eval design; honestly notes only the tooling was built/validated this session, not a full extra cycle
 - **Demo requirements**: `demo/requirements.txt` — bitsandbytes, qwen-vl-utils, gradio (T4 NF4 demo)
 - **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
 - **Demo examples**: `demo/examples/` — placeholder directory for example dashcam images
