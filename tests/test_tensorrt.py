@@ -293,10 +293,16 @@ class TestFallbackDocumentation:
         onnx_path = tmp_path / "vit.onnx"
         onnx_path.write_bytes(b"mock_onnx")
         engine_path = tmp_path / "vit.engine"
+        # compile_tensorrt's _save_fallback_info writes to output_dir for real —
+        # unlike the other tests in this class (which only inspect config VALUES
+        # and never execute compile_tensorrt), this one actually runs it, so
+        # output_dir must be tmp_path, not the fixture's real repo-relative
+        # "outputs/tensorrt" default, or the write leaks into the real repo.
+        isolated_config = {"tensorrt": {**trt_config["tensorrt"], "output_dir": str(tmp_path)}}
 
         with patch("drivesense.inference.tensorrt_vit._TRT_AVAILABLE", False):
             from drivesense.inference.tensorrt_vit import ViTExtractor
-            extractor = ViTExtractor(trt_config)
+            extractor = ViTExtractor(isolated_config)
             result = extractor.compile_tensorrt(
                 onnx_path, engine_path=engine_path
             )
