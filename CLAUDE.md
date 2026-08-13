@@ -44,6 +44,12 @@ ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
 - **Robustness evaluator**: `src/drivesense/eval/robustness.py` — Phase 4b: RobustnessEvaluator, stratify_predictions, compute_stratified_metrics, _extract_stratum_value, _compute_all_gaps, run_robustness_evaluation
 - **Full evaluation CLI**: `scripts/run_full_evaluation.py` — Phase 4b: --level 1 2 3 4, --mock, --generate-report; compile_final_report, box-drawing ASCII report (_WIDTH=66)
 - **Model card**: `MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
+- **Regression comparison lib**: `src/drivesense/eval/regression.py` — DEFAULT_METRICS, get_metric (dotted-path, splits on FIRST `.` only — `"detection_rate_by_iou.0.1"`'s own key contains a dot), relative_change, evaluate_metric (tolerance-gated), verdict_label (not tolerance-gated), compare_summaries, build_comparison_rows
+- **CI regression gate**: `scripts/run_regression_gate.py` — fails (exit 1) if a new eval_summary.json regresses vs a baseline beyond tolerance; `--tolerance NAME=FLOAT` overrides, `--output` writes the JSON report
+- **Eval comparison report**: `scripts/compare_eval_runs.py` — `--run LABEL=PATH` (repeatable), `--format console|markdown`; side-by-side metrics + improved/regressed/flat verdict vs previous run
+- **Drift monitor**: `src/drivesense/monitoring/drift.py` — DriftMonitor (PSI per stratification dimension: weather/time_of_day/location/hazard_class), population_stability_index, psi_severity (none<0.10, moderate<0.20, else significant), extract_dimension_values (hazard_class is multi-valued per record)
+- **Drift demo**: `scripts/demo_drift_monitor.py` — runs standalone (synthetic fallback data, or `--labels` a real sft_*_enriched.jsonl); splits in half, shows no-drift vs a deliberately weather-skewed incoming batch
+- **Observability docs**: `docs/OBSERVABILITY.md` — what each of the three tools does + how to plug into CI/production
 - **Demo requirements**: `demo/requirements.txt` — bitsandbytes, qwen-vl-utils, gradio (T4 NF4 demo)
 - **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
 - **Demo examples**: `demo/examples/` — placeholder directory for example dashcam images
