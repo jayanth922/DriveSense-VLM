@@ -253,12 +253,26 @@ def _load_adapter_model(config: dict, adapter_path: str) -> tuple:
         logger.error("Adapter path not found: %s", adapter_path)
         sys.exit(1)
 
-    logger.info("Loading base %s + LoRA adapter %s", base_name, adapter_path)
+    vision_cfg = config.get("vision", {})
+    min_px = vision_cfg.get("min_pixels", 256) * 28 * 28
+    max_px = vision_cfg.get("max_pixels", 1280) * 28 * 28
+    logger.info(
+        "Loading base %s + LoRA adapter %s (processor min_px=%d max_px=%d)",
+        base_name, adapter_path, min_px, max_px,
+    )
     base = AutoModelForImageTextToText.from_pretrained(
         base_name, device_map="auto", torch_dtype="auto", trust_remote_code=True
     )
     model = PeftModel.from_pretrained(base, str(adapter_path))
-    processor = AutoProcessor.from_pretrained(base_name)
+    # CRITICAL: pin the processor to the TRAINING resolution. Without
+    # min/max_pixels the base default (~1M px) is used, the model sees
+    # out-of-distribution image sizes, and Qwen2.5-VL's native absolute-pixel
+    # grounding prior overrides the learned 0-1000 box convention -> predicted
+    # boxes drift off-scale -> IoU vs 0-1000 GT collapses to ~0. Must match
+    # sft_trainer.py's processor build (min_pixels/max_pixels * 28 * 28).
+    processor = AutoProcessor.from_pretrained(
+        base_name, min_pixels=min_px, max_pixels=max_px
+    )
     return model, processor
 
 

@@ -105,16 +105,24 @@ def _assert_iou_not_all_zero(
     """
     n_pred = metrics.get("total_pred_hazards", 0)
     n_gt = metrics.get("total_gt_hazards", 0)
-    if n_pred > 0 and n_gt > 0 and float(metrics.get("global_max_iou", 0.0)) == 0.0:
+    gmax = float(metrics.get("global_max_iou", 0.0))
+    tp = metrics.get("true_positives", 0)
+    # Gap fix: a coordinate-space / unit mismatch can still yield sporadic tiny
+    # overlaps (global_max_iou > 0) yet produce ZERO true positives at threshold.
+    # Trip on that too, not only on an exact all-zero max IoU.
+    _all_zero_max = gmax == 0.0
+    _zero_tp_despite_many = tp == 0 and n_pred >= 20 and n_gt >= 20
+    if n_pred > 0 and n_gt > 0 and (_all_zero_max or _zero_tp_despite_many):
         preds = evaluator.load_predictions(pred_path)  # type: ignore[attr-defined]
         gts = evaluator.load_ground_truth(gt_path)  # type: ignore[attr-defined]
         sample_pred = next((h for p in preds for h in p.get("hazards", [])), None)
         sample_gt = next((h for g in gts for h in g.get("hazards", [])), None)
         logger.error(
-            "ALL-ZERO-IoU ABORT: %d pred hazards and %d GT hazards loaded, but every "
-            "pred x GT IoU is exactly 0.0. This is an extraction/key/shape bug, not a "
+            "IoU-SANITY ABORT: %d pred hazards and %d GT hazards loaded, but "
+            "true_positives=%d and global_max_iou=%.4f. Near-zero overlap at scale is "
+            "the signature of a coordinate-space/unit or extraction bug, not a merely "
             "weak model. Sample pred hazard: %s | Sample GT hazard: %s",
-            n_pred, n_gt, json.dumps(sample_pred), json.dumps(sample_gt),
+            n_pred, n_gt, tp, gmax, json.dumps(sample_pred), json.dumps(sample_gt),
         )
         sys.exit(1)
 

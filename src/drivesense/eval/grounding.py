@@ -458,8 +458,16 @@ def compute_severity_metrics(
 
     spearman = 0.0
     if _SCIPY_STATS_AVAILABLE and _scipy_stats is not None and n >= 3:
-        corr = _scipy_stats.spearmanr(pred_ints, gt_ints).correlation
-        spearman = float(corr) if not np.isnan(float(corr)) else 0.0
+        _res = _scipy_stats.spearmanr(pred_ints, gt_ints)
+        # scipy >=1.11 returns SignificanceResult with .statistic; the legacy
+        # .correlation alias is absent/broken on newer scipy (1.18 was silently
+        # yielding 0.0 here). Prefer .statistic, fall back to .correlation.
+        _corr = getattr(_res, "statistic", None)
+        if _corr is None:
+            _corr = getattr(_res, "correlation", float("nan"))
+        _corr = float(_corr) if _corr is not None else float("nan")
+        # NaN only when a side has zero variance (all same severity) -> keep 0.0.
+        spearman = _corr if not np.isnan(_corr) else 0.0
 
     return {
         "severity_accuracy": round(exact / n, 4),
