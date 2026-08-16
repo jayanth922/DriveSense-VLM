@@ -43,6 +43,18 @@ coordinate-convention bug (an inference/training image-resolution mismatch drove
 out of the labels' 0-1000 space, collapsing every IoU to ~0); it is fixed and these are the
 corrected numbers. See [Limitations](#limitations).
 
+**Level-2 reasoning (LLM-as-judge, Claude Sonnet 5, n = 1,027):**
+
+| Dimension | Mean |
+|---|---|
+| Correctness | 3.03 |
+| Completeness | 2.66 |
+| Action relevance | 3.80 |
+| **Overall** | **3.16 / 5** |
+| Pass rate (all dims >= 3.5) | 26% |
+
+Reasoning is acceptable and driving-action advice is the strongest dimension; completeness is weakest, consistent with the low detection recall.
+
 ### Limitations
 - **Low recall on the rare long tail** — recall @ IoU 0.5 is 24%; the model is conservative and
   misses many rare hazards (e.g. `unusual_object`, 24 instances, never detected). This, not

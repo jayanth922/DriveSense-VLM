@@ -82,6 +82,20 @@ much of the rare long tail. See Limitations.
 > space the labels use, collapsing every IoU to ~0. The bug is fixed; the numbers above are the
 > corrected v3 results.
 
+### Reasoning quality
+
+Level-2, LLM-as-judge (Claude Sonnet 5), 1-5 scale over 1,027 v3 test frames, 3 dimensions, run on the Batch API for $6.87:
+
+| Dimension | Mean |
+|---|---|
+| Correctness | 3.03 |
+| Completeness | 2.66 |
+| Action relevance | 3.80 |
+| **Overall** | **3.16 / 5** |
+| Pass rate (all dims >= 3.5) | 26% |
+
+Reasoning is sound and the recommended driving actions are the strongest dimension (3.80); completeness is weakest (2.66) -- the model under-reports hazards, mirroring the low grounding recall. 25/3,081 judge calls (0.8%) were dropped as failures rather than scored, so the means are not deflated.
+
 ### Demo quantization
 
 The T4 Spaces demo loads the model with bitsandbytes NF4 (4-bit, double-quant, bf16 compute) to
