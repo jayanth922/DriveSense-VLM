@@ -45,9 +45,9 @@ recommended ego-vehicle action.
 
 | | |
 |---|---|
-| **Dataset**       | 688 rare-hazard nuScenes v1.0-trainval frames (549/72/67), 3D-GT-projected boxes |
-| **Epochs**        | 8 |
-| **Train loss**    | 0.75 (train ≈ val, no overfitting) |
+| **Dataset**       | 9,158 rare-hazard nuScenes v1.0-trainval frames (7,228/889/1,041), 3D-GT-projected boxes |
+| **Epochs**        | 5 |
+| **Train loss**    | 0.40 (eval loss 0.66 — mild overfitting) |
 | **LoRA targets**  | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj` |
 | **Hardware**      | Single A100 |
 
@@ -57,18 +57,30 @@ recommended ego-vehicle action.
 
 ### Detection quality
 
-Level-1 grounding, v2 test set (n = 67; measured, reported exactly as observed):
+Level-1 grounding, v3 test set (n = 1041; measured, reported exactly as observed):
 
 | Metric | Value |
 |---|---|
-| Output parse rate          | 76% |
-| Detection F1 @ IoU 0.5     | 1.4% |
-| Detection Recall @ IoU 0.5 | 1.0% |
-| Mean best-pair IoU         | 0.12 |
-| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 33% / 20% / 5% |
+| Output parse rate | 98.7% |
+| Detection Precision @ IoU 0.5 | 40% |
+| Detection Recall @ IoU 0.5 | 24% |
+| Detection F1 @ IoU 0.5 | 30% |
+| Mean IoU of matched boxes | 0.67 |
+| Mean best-pair IoU | 0.51 |
+| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 82% / 75% / 66% |
+| Classification accuracy (matched) | 94% |
+| Severity within +/-1 / Spearman rho | 98.6% / 0.40 |
 
-These numbers are low and reported honestly — the small, narrow training set (688 frames, ~8
-nuScenes logs, mostly daytime) is the dominant limiter. See Limitations.
+The model is **high-precision, well-localized, and conservative**: when it predicts a box it is
+usually right (40% precision) and tight (mean IoU 0.67 on matched boxes, above the 0.55 target),
+and it names the hazard class correctly 94% of the time. The weak axis is **recall** -- it misses
+much of the rare long tail. See Limitations.
+
+> Note: an earlier version of this card reported ~1.4% F1. That was a coordinate-convention bug --
+> inference ran the image processor at a different resolution than training, so Qwen2.5-VL fell
+> back to its native absolute-pixel box convention and predicted boxes drifted out of the 0-1000
+> space the labels use, collapsing every IoU to ~0. The bug is fixed; the numbers above are the
+> corrected v3 results.
 
 ### Demo quantization
 
@@ -130,13 +142,15 @@ print(processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_token
 
 ## Limitations
 
-- **Low grounding accuracy** — Detection F1 @ IoU 0.5 is 1.4% and mean best-pair IoU is 0.12;
-  the model localizes something near a hazard on ~1/3 of frames but rarely reaches IoU 0.5.
-- **Small, narrow training set** — 688 frames from ~8 nuScenes logs, predominantly daytime, two
-  cities; expect degraded performance on dashcams that differ in mounting, FoV, or conditions.
-- **Dense-frame parse failures (~24%)** — on the densest multi-hazard frames the output exceeds
-  the generation token budget and ends mid-JSON (16/67 test frames, ~1,164 tokens at the 1024
-  cap). Root cause is undertraining on a small dataset; hazard-object repetition may contribute.
+- **Low recall on rare hazards** -- Recall @ IoU 0.5 is 24%. The model is conservative:
+  precision (40%) and localization (mean IoU 0.67 on matched boxes) are strong, but it misses much
+  of the long tail (e.g. `unusual_object`, 24 instances, is never detected). Undertraining on a
+  small, rare-by-construction set is the dominant limiter.
+- **Narrow training distribution** -- v3 uses 7,228 train frames from nuScenes v1.0-trainval,
+  predominantly daytime; expect degraded performance on dashcams that differ in mounting, FoV, or
+  conditions (night / heavy weather are out of distribution).
+- **Mild overfitting** -- v3 eval loss (0.66) is roughly double train loss (0.40); fewer epochs or
+  earlier stopping would likely lift recall.
 - **No temporal context** — single-frame inference; hazards needing motion cues are weaker.
 - **Quantization noise** — the NF4 demo introduces a small accuracy delta vs. bf16.
 

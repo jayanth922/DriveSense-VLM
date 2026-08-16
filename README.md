@@ -16,37 +16,43 @@ foundation model only writes the severity/reasoning/action text for each real bo
 
 ---
 
-## Real results (v2)
+## Real results (v3)
 
-Measured, reproducible — no fabricated numbers. Fine-tuned Qwen2.5-VL-3B + LoRA (r=32, α=64) on
-**688 rare-hazard nuScenes frames** (549 train / 72 val / 67 test; ~8 v1.0-trainval logs,
-predominantly daytime, Boston + Singapore). Training: 8 epochs, train loss 0.75, `train ≈ val`
-(no overfitting).
+Measured, reproducible -- no fabricated numbers. Fine-tuned Qwen2.5-VL-3B + LoRA (r=32, alpha=64)
+on the **v3 rare-hazard nuScenes set** (7,228 train / 889 val / 1,041 test; nuScenes v1.0-trainval,
+predominantly daytime). Training: 5 epochs, train loss 0.40, eval loss 0.66 (mild overfitting).
 
-**Level-1 grounding (test, n = 67):**
+**Level-1 grounding (test, n = 1041):**
 
 | Metric | Value |
 |---|---|
-| Detection Recall @ IoU 0.5 | 1.0% |
-| Detection Precision @ IoU 0.5 | 2.4% |
-| Detection **F1 @ IoU 0.5** | **1.4%** |
-| Mean best-pair IoU (localization) | **0.12** |
-| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 33% / 20% / 5% |
-| Output parse rate | 76% |
+| Detection Precision @ IoU 0.5 | **40%** |
+| Detection Recall @ IoU 0.5 | 24% |
+| Detection **F1 @ IoU 0.5** | **30%** |
+| Mean IoU of matched boxes | **0.67** |
+| Mean best-pair IoU (localization) | 0.51 |
+| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 82% / 75% / 66% |
+| Classification accuracy (matched) | 94% |
+| Severity within +/-1 / Spearman rho | 98.6% / 0.40 |
+| Output parse rate | 98.7% |
 
-**These numbers are low, and that is the honest result.** The model is real and un-collapsed —
-it localizes *something* near a hazard on ~1/3 of frames — but grounding is weak, driven mainly
-by the small, narrow dataset. See [Limitations](#limitations).
+**High-precision, well-localized, conservative.** When the model predicts a box it is usually
+right (40% precision), tight (mean IoU 0.67, above the 0.55 target), and correctly labeled (94%);
+its weakness is recall on the rare long tail. An earlier card reported ~1.4% F1 -- that was a
+coordinate-convention bug (an inference/training image-resolution mismatch drove predicted boxes
+out of the labels' 0-1000 space, collapsing every IoU to ~0); it is fixed and these are the
+corrected numbers. See [Limitations](#limitations).
 
 ### Limitations
-- **Small, narrow dataset** (688 frames, ~8 logs, daytime, 2 cities) — the primary reason
-  grounding is weak; more data is the main lever for better numbers.
-- **Weak localization** — detections rarely reach the IoU 0.5 threshold.
-- **Dense-frame parse failures (~24%)** — on the densest multi-hazard frames the model's output
-  exceeds the generation token budget and ends mid-JSON (verified: 16/67 test frames truncated at
-  ~1,164 tokens under the 1024-token cap). Root cause is **undertraining on a small dataset**;
-  repetition of hazard objects on dense frames may be a contributing factor. Raising the token
-  budget did not fix it.
+- **Low recall on the rare long tail** — recall @ IoU 0.5 is 24%; the model is conservative and
+  misses many rare hazards (e.g. `unusual_object`, 24 instances, never detected). This, not
+  localization, is the weak axis: precision (40%) and box tightness (mean IoU 0.67 on matches) are
+  strong. More data on the rarest classes is the main lever.
+- **Narrow training distribution** — 7,228 train frames from nuScenes v1.0-trainval, predominantly
+  daytime; night and heavy weather are out of distribution.
+- **Mild overfitting** — v3 eval loss (0.66) is ~2x train loss (0.40); fewer epochs would help recall.
+- **Dense-frame parse failures now rare (~1.3%)** — raising the token budget to 768 cut truncated
+  outputs to 14/1041 frames (98.7% parse), up from ~76% under the old 1024-cap run.
 - Research / offline-evaluation use only — not for real-time or safety-critical control.
 
 ---
