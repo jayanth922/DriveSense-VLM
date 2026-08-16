@@ -96,6 +96,21 @@ Level-2, LLM-as-judge (Claude Sonnet 5), 1-5 scale over 1,027 v3 test frames, 3 
 
 Reasoning is sound and the recommended driving actions are the strongest dimension (3.80); completeness is weakest (2.66) -- the model under-reports hazards, mirroring the low grounding recall. 25/3,081 judge calls (0.8%) were dropped as failures rather than scored, so the means are not deflated.
 
+### Robustness (stratified)
+
+Level-4, grounding stratified by box-size tier x condition (GT-hazard-centric -- a missed hazard counts as IoU 0), over 691 boxed-hazard frames / 2,073 hazards:
+
+| Slice | Detection rate @ IoU 0.5 |
+|---|---|
+| Tiny boxes (78% of hazards) | 23% |
+| Small boxes | 46% |
+| Medium boxes | 53% |
+| Clear weather | ~51-69% |
+| **Rain** (n=337) | **12%** |
+| **Night + tiny** (n=308) | **13%** |
+
+Two honest findings: performance scales with hazard size (tiny/distant boxes are hardest -- and the most common), and the model has a real day/clear bias -- rain roughly quarters detection vs clear. More rain/night training data is the lever to close that gap.
+
 ### Demo quantization
 
 The T4 Spaces demo loads the model with bitsandbytes NF4 (4-bit, double-quant, bf16 compute) to

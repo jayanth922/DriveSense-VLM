@@ -55,6 +55,18 @@ corrected numbers. See [Limitations](#limitations).
 
 Reasoning is acceptable and driving-action advice is the strongest dimension; completeness is weakest, consistent with the low detection recall.
 
+**Level-4 robustness (stratified, GT-hazard-centric, 691 frames / 2,073 hazards):**
+
+| Slice | Detection rate @ IoU 0.5 |
+|---|---|
+| Tiny boxes (78% of hazards) | 23% |
+| Small / Medium boxes | 46% / 53% |
+| Clear weather | ~51-69% |
+| Rain (n=337) | 12% |
+| Night + tiny (n=308) | 13% |
+
+Performance scales with hazard size (tiny distant boxes hardest), and there is a clear day/clear bias -- rain roughly quarters detection. Honest OOD weakness; more adverse-condition data would help.
+
 ### Limitations
 - **Low recall on the rare long tail** — recall @ IoU 0.5 is 24%; the model is conservative and
   misses many rare hazards (e.g. `unusual_object`, 24 instances, never detected). This, not

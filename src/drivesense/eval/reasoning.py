@@ -153,7 +153,7 @@ class LLMJudge:
             }
         except Exception as exc:  # noqa: BLE001
             logger.warning("Judge call failed for dimension=%s: %s", dimension, exc)
-            return {"score": 1, "justification": f"<error: {exc}>", "dimension": dimension}
+            return {"score": None, "justification": f"<error: {exc}>", "dimension": dimension}
 
     def judge_batch(
         self,
