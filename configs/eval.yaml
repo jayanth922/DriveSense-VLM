@@ -33,7 +33,7 @@ grounding:
 reasoning:
   judge:
     provider: "anthropic"
-    model: "claude-sonnet-4-6"
+    model: "claude-sonnet-5"
     temperature: 0.1                  # Near-deterministic for reproducible scoring
     max_concurrent: 5                 # Max parallel API calls in judge_batch
     dimensions:

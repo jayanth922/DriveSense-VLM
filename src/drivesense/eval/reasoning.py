@@ -127,14 +127,23 @@ class LLMJudge:
             f"Evaluate the model on: {dimension}",
         )
         user_prompt = _build_judge_prompt(prediction, ground_truth, dimension, dim_description)
+        _kwargs = dict(
+            model=self._model,
+            max_tokens=256,
+            system=self.JUDGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        if self._temperature is not None:
+            _kwargs["temperature"] = self._temperature
         try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=256,
-                temperature=self._temperature,
-                system=self.JUDGE_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
+            try:
+                response = self._client.messages.create(**_kwargs)
+            except Exception as _te:  # some models (e.g. Sonnet 5) reject temperature
+                if "temperature" in str(_te).lower() and "temperature" in _kwargs:
+                    _kwargs.pop("temperature")
+                    response = self._client.messages.create(**_kwargs)
+                else:
+                    raise
             raw = response.content[0].text
             parsed = _parse_judge_response(raw)
             return {
