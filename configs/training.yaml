@@ -7,10 +7,10 @@
 # =============================================================================
 
 training:
-  output_dir: "outputs/training"
+  output_dir: "/workspace/v4_train_out"
 
   # --- Epochs & Batch Size ---
-  num_epochs: 5
+  num_epochs: 3
   per_device_train_batch_size: 8      # raised 4->8: better GPU util on 80GB (3B + LoRA is small)
   per_device_eval_batch_size: 4
   # Effective batch size = per_device_train_batch_size * gradient_accumulation_steps
@@ -29,13 +29,13 @@ training:
 
   # --- Precision & Memory Efficiency ---
   bf16: true                          # bfloat16 on A100/H100 (no loss scaling needed)
-  gradient_checkpointing: false       # OFF: 3B + LoRA fits 80GB unchkpt'd (faster backward pass)
+  gradient_checkpointing: true       # OFF: 3B + LoRA fits 80GB unchkpt'd (faster backward pass)
   dataloader_num_workers: 8           # feed the GPU (pod has 16 vCPU)
   dataloader_pin_memory: true
 
   # --- Checkpointing ---
   save_strategy: "epoch"              # Save checkpoint after each epoch
-  save_total_limit: 3                 # Keep only the 3 most recent checkpoints
+  save_total_limit: 5                 # Keep only the 3 most recent checkpoints
   load_best_model_at_end: true
   metric_for_best_model: "eval_loss"
 

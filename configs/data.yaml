@@ -90,7 +90,7 @@ annotation:
   retry_backoff_base: 2.0              # Backoff multiplier: wait = base^attempt seconds
   cache_dir: "outputs/data/annotation_cache"   # Per-frame JSON cache for resume support
   output_dir: "outputs/data/annotated"         # Annotated manifest + quality report
-  sft_output_dir: "outputs/data/sft_ready"     # SFT-formatted JSONL files for training
+  sft_output_dir: "/workspace/sft_train_ready_v4_merged"
 
   # Validation thresholds
   validation:
