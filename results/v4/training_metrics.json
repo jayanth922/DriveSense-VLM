@@ -1,0 +1,7 @@
+{
+  "train_loss": 0.7987007091845973,
+  "eval_loss": 0.693571150302887,
+  "epochs_trained": 3.0,
+  "best_checkpoint": "/workspace/v4_train_out",
+  "lora_adapter_dir": "/workspace/v4_train_out/lora_adapter"
+}

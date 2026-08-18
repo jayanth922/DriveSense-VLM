@@ -1,0 +1,35 @@
+{
+  "v3_train": 7228,
+  "v4_add_input": 1442,
+  "v4_add_dropped_dup": 0,
+  "v4_add_kept": 1442,
+  "v4_train_total": 8670,
+  "val": 889,
+  "test": 1041,
+  "leak_train_vs_test": 0,
+  "leak_train_vs_val": 0,
+  "add_weather_time": {
+    "rain|night": 69,
+    "rain|day": 910,
+    "clear|night": 463
+  },
+  "add_label_dist": {
+    "construction_zone": 566,
+    "occluded_pedestrian": 439,
+    "high_density": 279,
+    "no_hazard": 216,
+    "jaywalking": 122,
+    "unusual_object": 89,
+    "cyclist_proximity": 75
+  },
+  "merged_train_label_dist": {
+    "high_density": 6479,
+    "jaywalking": 5595,
+    "construction_zone": 5523,
+    "occluded_pedestrian": 2077,
+    "cyclist_proximity": 1307,
+    "no_hazard": 216,
+    "unusual_object": 200
+  },
+  "out_dir": "/workspace/sft_train_ready_v4_merged"
+}

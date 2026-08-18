@@ -11,11 +11,11 @@ training:
 
   # --- Epochs & Batch Size ---
   num_epochs: 3
-  per_device_train_batch_size: 8      # raised 4->8: better GPU util on 80GB (3B + LoRA is small)
-  per_device_eval_batch_size: 4
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 2
   # Effective batch size = per_device_train_batch_size * gradient_accumulation_steps
   # = 8 * 2 = 16 examples per optimizer step (same effective batch, fewer accum micro-steps)
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 4
 
   # --- Optimizer ---
   learning_rate: 2.0e-5
@@ -42,7 +42,7 @@ training:
   # --- Logging & Evaluation ---
   logging_steps: 10                   # Log training metrics every 10 steps
   eval_strategy: "epoch"             # Run validation at end of each epoch
-  report_to: "wandb"
+  report_to: "none"
 
   # --- Checkpoint Resume ---
   resume_from_checkpoint: null        # Set to "latest" or a path; null = fresh start

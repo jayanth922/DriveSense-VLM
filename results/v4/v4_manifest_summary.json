@@ -1,0 +1,11 @@
+{
+  "mode": "adverse_only",
+  "adverse_pool": 2231,
+  "picked": 2231,
+  "picked_scenes": 72,
+  "weather_time_breakdown": {
+    "rain|day": 1323,
+    "clear|night": 757,
+    "rain|night": 151
+  }
+}

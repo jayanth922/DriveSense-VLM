@@ -1,0 +1,414 @@
+{
+  "n_frames": 691,
+  "n_hazards": 2073,
+  "overall": {
+    "n": 2073,
+    "mean_best_pair_iou": 0.2066,
+    "detection_rate_by_iou": {
+      "0.1": 0.3999,
+      "0.3": 0.3319,
+      "0.5": 0.2301
+    }
+  },
+  "size_tier_summary": {
+    "tiny": {
+      "n": 1615,
+      "mean_best_pair_iou": 0.1599,
+      "detection_rate_by_iou": {
+        "0.1": 0.3207,
+        "0.3": 0.2483,
+        "0.5": 0.1715
+      }
+    },
+    "small": {
+      "n": 420,
+      "mean_best_pair_iou": 0.3672,
+      "detection_rate_by_iou": {
+        "0.1": 0.6738,
+        "0.3": 0.631,
+        "0.5": 0.4286
+      }
+    },
+    "medium": {
+      "n": 38,
+      "mean_best_pair_iou": 0.4169,
+      "detection_rate_by_iou": {
+        "0.1": 0.7368,
+        "0.3": 0.5789,
+        "0.5": 0.5263
+      }
+    },
+    "large": {
+      "n": 0,
+      "mean_best_pair_iou": 0.0,
+      "detection_rate_by_iou": {
+        "0.1": 0.0,
+        "0.3": 0.0,
+        "0.5": 0.0
+      }
+    }
+  },
+  "cross_tabs": {
+    "weather": {
+      "tiny|ALL": {
+        "n": 1615,
+        "mean_best_pair_iou": 0.1599,
+        "detection_rate_by_iou": {
+          "0.1": 0.3207,
+          "0.3": 0.2483,
+          "0.5": 0.1715
+        }
+      },
+      "tiny|clear": {
+        "n": 1336,
+        "mean_best_pair_iou": 0.1735,
+        "detection_rate_by_iou": {
+          "0.1": 0.3443,
+          "0.3": 0.271,
+          "0.5": 0.1909
+        }
+      },
+      "tiny|rain": {
+        "n": 279,
+        "mean_best_pair_iou": 0.0948,
+        "detection_rate_by_iou": {
+          "0.1": 0.2079,
+          "0.3": 0.1398,
+          "0.5": 0.0789
+        }
+      },
+      "small|ALL": {
+        "n": 420,
+        "mean_best_pair_iou": 0.3672,
+        "detection_rate_by_iou": {
+          "0.1": 0.6738,
+          "0.3": 0.631,
+          "0.5": 0.4286
+        }
+      },
+      "small|clear": {
+        "n": 371,
+        "mean_best_pair_iou": 0.4029,
+        "detection_rate_by_iou": {
+          "0.1": 0.7358,
+          "0.3": 0.6954,
+          "0.5": 0.4771
+        }
+      },
+      "small|rain": {
+        "n": 49,
+        "mean_best_pair_iou": 0.097,
+        "detection_rate_by_iou": {
+          "0.1": 0.2041,
+          "0.3": 0.1429,
+          "0.5": 0.0612
+        }
+      },
+      "medium|ALL": {
+        "n": 38,
+        "mean_best_pair_iou": 0.4169,
+        "detection_rate_by_iou": {
+          "0.1": 0.7368,
+          "0.3": 0.5789,
+          "0.5": 0.5263
+        }
+      },
+      "medium|clear": {
+        "n": 29,
+        "mean_best_pair_iou": 0.526,
+        "detection_rate_by_iou": {
+          "0.1": 0.8621,
+          "0.3": 0.7586,
+          "0.5": 0.6897
+        }
+      },
+      "medium|rain": {
+        "n": 9,
+        "mean_best_pair_iou": 0.0653,
+        "detection_rate_by_iou": {
+          "0.1": 0.3333,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "large|ALL": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "large|clear": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "large|rain": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "ALL|clear": {
+        "n": 1736,
+        "mean_best_pair_iou": 0.2284,
+        "detection_rate_by_iou": {
+          "0.1": 0.4366,
+          "0.3": 0.3698,
+          "0.5": 0.2604
+        }
+      },
+      "ALL|rain": {
+        "n": 337,
+        "mean_best_pair_iou": 0.0943,
+        "detection_rate_by_iou": {
+          "0.1": 0.2107,
+          "0.3": 0.1365,
+          "0.5": 0.0742
+        }
+      }
+    },
+    "time_of_day": {
+      "tiny|ALL": {
+        "n": 1615,
+        "mean_best_pair_iou": 0.1599,
+        "detection_rate_by_iou": {
+          "0.1": 0.3207,
+          "0.3": 0.2483,
+          "0.5": 0.1715
+        }
+      },
+      "tiny|day": {
+        "n": 1307,
+        "mean_best_pair_iou": 0.1721,
+        "detection_rate_by_iou": {
+          "0.1": 0.3458,
+          "0.3": 0.267,
+          "0.5": 0.1867
+        }
+      },
+      "tiny|night": {
+        "n": 308,
+        "mean_best_pair_iou": 0.108,
+        "detection_rate_by_iou": {
+          "0.1": 0.2143,
+          "0.3": 0.1688,
+          "0.5": 0.1071
+        }
+      },
+      "small|ALL": {
+        "n": 420,
+        "mean_best_pair_iou": 0.3672,
+        "detection_rate_by_iou": {
+          "0.1": 0.6738,
+          "0.3": 0.631,
+          "0.5": 0.4286
+        }
+      },
+      "small|day": {
+        "n": 376,
+        "mean_best_pair_iou": 0.3723,
+        "detection_rate_by_iou": {
+          "0.1": 0.6941,
+          "0.3": 0.6463,
+          "0.5": 0.4282
+        }
+      },
+      "small|night": {
+        "n": 44,
+        "mean_best_pair_iou": 0.3232,
+        "detection_rate_by_iou": {
+          "0.1": 0.5,
+          "0.3": 0.5,
+          "0.5": 0.4318
+        }
+      },
+      "medium|ALL": {
+        "n": 38,
+        "mean_best_pair_iou": 0.4169,
+        "detection_rate_by_iou": {
+          "0.1": 0.7368,
+          "0.3": 0.5789,
+          "0.5": 0.5263
+        }
+      },
+      "medium|day": {
+        "n": 28,
+        "mean_best_pair_iou": 0.4406,
+        "detection_rate_by_iou": {
+          "0.1": 0.75,
+          "0.3": 0.6429,
+          "0.5": 0.5714
+        }
+      },
+      "medium|night": {
+        "n": 10,
+        "mean_best_pair_iou": 0.3504,
+        "detection_rate_by_iou": {
+          "0.1": 0.7,
+          "0.3": 0.4,
+          "0.5": 0.4
+        }
+      },
+      "large|ALL": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "large|day": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "large|night": {
+        "n": 0,
+        "mean_best_pair_iou": 0.0,
+        "detection_rate_by_iou": {
+          "0.1": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0
+        }
+      },
+      "ALL|day": {
+        "n": 1711,
+        "mean_best_pair_iou": 0.2205,
+        "detection_rate_by_iou": {
+          "0.1": 0.429,
+          "0.3": 0.3565,
+          "0.5": 0.2461
+        }
+      },
+      "ALL|night": {
+        "n": 362,
+        "mean_best_pair_iou": 0.1409,
+        "detection_rate_by_iou": {
+          "0.1": 0.2624,
+          "0.3": 0.2155,
+          "0.5": 0.1547
+        }
+      }
+    }
+  },
+  "worst_buckets": [
+    {
+      "bucket": "weather:medium|rain",
+      "n": 9,
+      "mean_best_pair_iou": 0.0653,
+      "detection_rate_by_iou": {
+        "0.1": 0.3333,
+        "0.3": 0.0,
+        "0.5": 0.0
+      }
+    },
+    {
+      "bucket": "weather:ALL|rain",
+      "n": 337,
+      "mean_best_pair_iou": 0.0943,
+      "detection_rate_by_iou": {
+        "0.1": 0.2107,
+        "0.3": 0.1365,
+        "0.5": 0.0742
+      }
+    },
+    {
+      "bucket": "weather:tiny|rain",
+      "n": 279,
+      "mean_best_pair_iou": 0.0948,
+      "detection_rate_by_iou": {
+        "0.1": 0.2079,
+        "0.3": 0.1398,
+        "0.5": 0.0789
+      }
+    },
+    {
+      "bucket": "weather:small|rain",
+      "n": 49,
+      "mean_best_pair_iou": 0.097,
+      "detection_rate_by_iou": {
+        "0.1": 0.2041,
+        "0.3": 0.1429,
+        "0.5": 0.0612
+      }
+    },
+    {
+      "bucket": "time_of_day:tiny|night",
+      "n": 308,
+      "mean_best_pair_iou": 0.108,
+      "detection_rate_by_iou": {
+        "0.1": 0.2143,
+        "0.3": 0.1688,
+        "0.5": 0.1071
+      }
+    }
+  ],
+  "best_buckets": [
+    {
+      "bucket": "weather:medium|clear",
+      "n": 29,
+      "mean_best_pair_iou": 0.526,
+      "detection_rate_by_iou": {
+        "0.1": 0.8621,
+        "0.3": 0.7586,
+        "0.5": 0.6897
+      }
+    },
+    {
+      "bucket": "time_of_day:medium|day",
+      "n": 28,
+      "mean_best_pair_iou": 0.4406,
+      "detection_rate_by_iou": {
+        "0.1": 0.75,
+        "0.3": 0.6429,
+        "0.5": 0.5714
+      }
+    },
+    {
+      "bucket": "weather:medium|ALL",
+      "n": 38,
+      "mean_best_pair_iou": 0.4169,
+      "detection_rate_by_iou": {
+        "0.1": 0.7368,
+        "0.3": 0.5789,
+        "0.5": 0.5263
+      }
+    },
+    {
+      "bucket": "time_of_day:medium|ALL",
+      "n": 38,
+      "mean_best_pair_iou": 0.4169,
+      "detection_rate_by_iou": {
+        "0.1": 0.7368,
+        "0.3": 0.5789,
+        "0.5": 0.5263
+      }
+    },
+    {
+      "bucket": "weather:small|clear",
+      "n": 371,
+      "mean_best_pair_iou": 0.4029,
+      "detection_rate_by_iou": {
+        "0.1": 0.7358,
+        "0.3": 0.6954,
+        "0.5": 0.4771
+      }
+    }
+  ],
+  "_min_samples": 5
+}

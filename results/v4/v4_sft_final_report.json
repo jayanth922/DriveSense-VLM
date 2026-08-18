@@ -1,0 +1,18 @@
+{
+  "frames_final": 1442,
+  "positive": 1226,
+  "negative_available": 1001,
+  "negative_kept": 216,
+  "nohazard_frac": 0.15,
+  "avg_hazards_per_frame": 1.24,
+  "hazard_label_distribution": {
+    "construction_zone": 566,
+    "occluded_pedestrian": 439,
+    "high_density": 279,
+    "no_hazard": 216,
+    "jaywalking": 122,
+    "unusual_object": 89,
+    "cyclist_proximity": 75
+  },
+  "sft_out": "/workspace/sft_train_ready_v4"
+}

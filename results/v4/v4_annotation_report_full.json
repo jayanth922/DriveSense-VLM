@@ -1,0 +1,25 @@
+{
+  "total": 2231,
+  "parsed": 2227,
+  "valid_clean": 2226,
+  "auto_fixed": 0,
+  "still_invalid": 1,
+  "dropped_banned_hazards": 0,
+  "boxes_repaired": 798,
+  "empty_after_filter": 0,
+  "failed": 4,
+  "label_distribution": {
+    "no_hazard": 1053,
+    "construction_zone": 566,
+    "occluded_pedestrian": 439,
+    "high_density": 279,
+    "jaywalking": 122,
+    "unusual_object": 89,
+    "cyclist_proximity": 75,
+    "?": 1
+  },
+  "tokens_in": 7387670,
+  "tokens_out": 717568,
+  "batch_cost_usd": 10.9755,
+  "sft_out": "/workspace/sft_train_ready_v4"
+}
