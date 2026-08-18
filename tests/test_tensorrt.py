@@ -161,8 +161,11 @@ class TestInputShapeOrder:
         assert input_shape == (1, 3, 448, 672)
 
     def test_grid_thw_computation(self) -> None:
+        # _compute_grid_thw returns a torch tensor, so this one test genuinely
+        # needs torch. Skip (don't fail) where torch isn't installed — local dev
+        # and CI are both torch-free by design; the rest of this module is mock-safe.
+        pytest.importorskip("torch")
         from drivesense.inference.tensorrt_vit import _compute_grid_thw
-        import torch
         grid = _compute_grid_thw((1, 3, 448, 672))
         # 448/28 = 16 height patches, 672/28 = 24 width patches
         assert grid.shape == (1, 3)

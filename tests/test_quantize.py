@@ -291,6 +291,9 @@ class TestQualityBenchmarkFormat:
         self, quant_config: dict, mock_quantized_dir: Path, tmp_path: Path
     ) -> None:
         """Empty test_samples returns zero metrics without running inference."""
+        # benchmark_quality() calls _require_torch() internally, so this one test
+        # needs torch present. Skip rather than fail on torch-free envs (CI, local).
+        pytest.importorskip("torch")
         from drivesense.inference.quantize import AWQQuantizer
         q = AWQQuantizer(quant_config)
         result = q.benchmark_quality(
