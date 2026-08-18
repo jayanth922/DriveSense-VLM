@@ -57,19 +57,16 @@ recommended ego-vehicle action.
 
 ### Detection quality
 
-Level-1 grounding, v3 test set (n = 1041; measured, reported exactly as observed):
+Level-1 grounding on the **fixed 1,041-frame test set**. `v3` is the production model; `v4` is a
+later candidate (+1,442 targeted adverse-condition frames) that the regression gate **blocked**.
 
-| Metric | Value |
-|---|---|
-| Output parse rate | 98.7% |
-| Detection Precision @ IoU 0.5 | 40% |
-| Detection Recall @ IoU 0.5 | 24% |
-| Detection F1 @ IoU 0.5 | 30% |
-| Mean IoU of matched boxes | 0.67 |
-| Mean best-pair IoU | 0.51 |
-| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 82% / 75% / 66% |
-| Classification accuracy (matched) | 94% |
-| Severity within +/-1 / Spearman rho | 98.6% / 0.40 |
+| version | train ex. | epochs | eval_loss | Precision | Recall | F1 | mean IoU | class acc | parse |
+|---|---|---|---|---|---|---|---|---|---|
+| **v3 (production)** | 7,228 | 5 | 0.66 | **40%** | **24%** | **30%** | **0.67** | 94% | 98.7% |
+| v4 (blocked) | 8,670 | 3 | 0.694 | 37% | 19% | 25% | 0.656 | 95% | 97.4% |
+
+Additional v3 detail: mean best-pair IoU 0.51; frame detect-rate @ IoU 0.1 / 0.3 / 0.5 =
+82% / 75% / 66%; severity within +/-1 98.6%, Spearman rho 0.40.
 
 The model is **high-precision, well-localized, and conservative**: when it predicts a box it is
 usually right (40% precision) and tight (mean IoU 0.67 on matched boxes, above the 0.55 target),
@@ -80,7 +77,7 @@ much of the rare long tail. See Limitations.
 > inference ran the image processor at a different resolution than training, so Qwen2.5-VL fell
 > back to its native absolute-pixel box convention and predicted boxes drifted out of the 0-1000
 > space the labels use, collapsing every IoU to ~0. The bug is fixed; the numbers above are the
-> corrected v3 results.
+> corrected results.
 
 ### Reasoning quality
 
@@ -98,18 +95,25 @@ Reasoning is sound and the recommended driving actions are the strongest dimensi
 
 ### Robustness (stratified)
 
-Level-4, grounding stratified by box-size tier x condition (GT-hazard-centric -- a missed hazard counts as IoU 0), over 691 boxed-hazard frames / 2,073 hazards:
+Level-4, grounding stratified by box-size tier x condition (GT-hazard-centric -- a missed hazard
+counts as IoU 0), detection rate @ IoU 0.5:
 
-| Slice | Detection rate @ IoU 0.5 |
-|---|---|
-| Tiny boxes (78% of hazards) | 23% |
-| Small boxes | 46% |
-| Medium boxes | 53% |
-| Clear weather | ~51-69% |
-| **Rain** (n=337) | **12%** |
-| **Night + tiny** (n=308) | **13%** |
+| Slice | v3 (production) | v4 (blocked) |
+|---|---|---|
+| Overall | 28.0% | 23.0% |
+| Tiny boxes (78% of hazards) | 22.8% | 17.2% |
+| Small boxes | 46.4% | 42.9% |
+| Medium boxes | 52.6% | 52.6% |
+| Clear + medium | 69.0% | 69.0% |
+| **Rain** | **12.5%** | **7.4%** |
+| **Night + tiny** | **12.7%** | **10.7%** |
 
-Two honest findings: performance scales with hazard size (tiny/distant boxes are hardest -- and the most common), and the model has a real day/clear bias -- rain roughly quarters detection vs clear. More rain/night training data is the lever to close that gap.
+Three honest findings: performance scales with hazard size (tiny/distant boxes are hardest -- and
+the most common); the model has a real day/clear bias (rain roughly quarters detection vs clear);
+and **adding targeted adverse-condition data did not fix it**. v4 added 1,442 rain/night frames
+aimed squarely at these weak buckets and every one of them *regressed*, so the gate blocked the
+candidate. For this model the bottleneck is model-side (input resolution, tiny-box weighting),
+not data volume.
 
 ### Demo quantization
 
@@ -180,6 +184,9 @@ print(processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_token
   conditions (night / heavy weather are out of distribution).
 - **Mild overfitting** -- v3 eval loss (0.66) is roughly double train loss (0.40); fewer epochs or
   earlier stopping would likely lift recall.
+- **More data is demonstrably not the lever** -- both naive (v3: 2,754 -> 7,228) and targeted
+  (v4: +1,442 adverse frames) data scaling failed to lift recall on the weak buckets; v4 was
+  blocked by the regression gate. The bottleneck is model-side.
 - **No temporal context** — single-frame inference; hazards needing motion cues are weaker.
 - **Quantization noise** — the NF4 demo introduces a small accuracy delta vs. bf16.
 

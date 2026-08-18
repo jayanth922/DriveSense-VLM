@@ -65,7 +65,13 @@ venv.bak/
 data/
 outputs/
 checkpoints/
-results/
+# results/ is ignored in bulk, but two small artifacts are committed on purpose:
+# CI (.github/workflows/ci.yml) reads metrics_registry.json, and mlops_report.md is
+# the generated summary linked from README. Uses results/* so the negations can apply
+# (a negation cannot re-include a file under an excluded *directory*).
+results/*
+!results/metrics_registry.json
+!results/mlops_report.md
 datasets/
 # Unignore the Python package — data/ above would otherwise match src/drivesense/data/
 !src/drivesense/data/
@@ -176,3 +182,9 @@ dmypy.json
 *.engine
 *.plan
 *.cubin
+
+# Pod / RunPod scratch (added during v4 cleanup)
+300
+have_*.txt
+urls*.json
+*.tgz

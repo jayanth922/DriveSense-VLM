@@ -16,34 +16,32 @@ foundation model only writes the severity/reasoning/action text for each real bo
 
 ---
 
-## Real results (v3)
+## Results (honest, measured on a fixed test set)
 
-Measured, reproducible -- no fabricated numbers. Fine-tuned Qwen2.5-VL-3B + LoRA (r=32, alpha=64)
-on the **v3 rare-hazard nuScenes set** (7,228 train / 889 val / 1,041 test; nuScenes v1.0-trainval,
-predominantly daytime). Training: 5 epochs, train loss 0.40, eval loss 0.66 (mild overfitting).
+DriveSense-VLM is an end-to-end pipeline that **mines** rare driving hazards, **auto-labels**
+them with a foundation model behind a validation gate, **fine-tunes** a small explainable VLM
+(Qwen2.5-VL-3B LoRA) to detect and reason about them, then **rigorously evaluates** — a
+4-level framework (grounding, reasoning, production, robustness) — and gates regressions.
 
-**Level-1 grounding (test, n = 1041):**
+All numbers below are measured on the **fixed 1,041-frame v3/v4 test set** (nuScenes
+v1.0-trainval, predominantly daytime). No fabricated numbers.
 
-| Metric | Value |
-|---|---|
-| Detection Precision @ IoU 0.5 | **40%** |
-| Detection Recall @ IoU 0.5 | 24% |
-| Detection **F1 @ IoU 0.5** | **30%** |
-| Mean IoU of matched boxes | **0.67** |
-| Mean best-pair IoU (localization) | 0.51 |
-| Frame detect-rate @ IoU 0.1 / 0.3 / 0.5 | 82% / 75% / 66% |
-| Classification accuracy (matched) | 94% |
-| Severity within +/-1 / Spearman rho | 98.6% / 0.40 |
-| Output parse rate | 98.7% |
+### Detection (L1 grounding, IoU ≥ 0.5)
 
-**High-precision, well-localized, conservative.** When the model predicts a box it is usually
-right (40% precision), tight (mean IoU 0.67, above the 0.55 target), and correctly labeled (94%);
-its weakness is recall on the rare long tail. An earlier card reported ~1.4% F1 -- that was a
-coordinate-convention bug (an inference/training image-resolution mismatch drove predicted boxes
-out of the labels' 0-1000 space, collapsing every IoU to ~0); it is fixed and these are the
-corrected numbers. See [Limitations](#limitations).
+| version | train ex. | Precision | Recall | F1 | mean IoU | class acc | parse |
+|---|---|---|---|---|---|---|---|
+| v3 (naive scale-up) | 7,228 | 0.40 | 0.24 | 0.30 | 0.67 | 0.94 | 98.7% |
+| v4 (targeted + adverse) | 8,670 | 0.37 | 0.19 | 0.25 | 0.656 | 0.95 | 97.4% |
 
-**Level-2 reasoning (LLM-as-judge, Claude Sonnet 5, n = 1,027):**
+High-precision, well-localized (mean IoU 0.67 > the 0.55 target), correctly labeled (94–95%),
+severity-ranked sensibly (within-one 98.6%, Spearman 0.41). The weakness is **recall on the
+rare long tail** — especially tiny/distant boxes.
+
+An earlier card reported ~1.4% F1 — that was a coordinate-convention bug (an inference/training
+image-resolution mismatch drove predicted boxes out of the labels' 0–1000 space, collapsing
+every IoU to ~0); it is fixed and these are the corrected numbers.
+
+### Reasoning (L2, LLM-as-judge, Claude Sonnet 5, n = 1,027 — v3)
 
 | Dimension | Mean |
 |---|---|
@@ -51,33 +49,56 @@ corrected numbers. See [Limitations](#limitations).
 | Completeness | 2.66 |
 | Action relevance | 3.80 |
 | **Overall** | **3.16 / 5** |
-| Pass rate (all dims >= 3.5) | 26% |
+| Pass rate (all dims ≥ 3.5) | 26% |
 
-Reasoning is acceptable and driving-action advice is the strongest dimension; completeness is weakest, consistent with the low detection recall.
+Reasoning is acceptable and driving-action advice is the strongest dimension; completeness is
+weakest, consistent with the low detection recall.
 
-**Level-4 robustness (stratified, GT-hazard-centric, 691 frames / 2,073 hazards):**
+### Robustness (L4, detection@0.5 by bucket) — and the flywheel finding
 
-| Slice | Detection rate @ IoU 0.5 |
-|---|---|
-| Tiny boxes (78% of hazards) | 23% |
-| Small / Medium boxes | 46% / 53% |
-| Clear weather | ~51-69% |
-| Rain (n=337) | 12% |
-| Night + tiny (n=308) | 13% |
+| bucket | v3 | v4 |
+|---|---|---|
+| tiny box (78% of hazards) | 22.8% | 17.2% |
+| small / medium box | 46.4% / 52.6% | 42.9% / 52.6% |
+| rain | 12.5% | 7.4% |
+| night + tiny | 12.7% | 10.7% |
+| clear + medium | 69% | 69% |
 
-Performance scales with hazard size (tiny distant boxes hardest), and there is a clear day/clear bias -- rain roughly quarters detection. Honest OOD weakness; more adverse-condition data would help.
+**Two data-scaling experiments, one conclusion.** v3 scaled data naively (2.7k→7.2k) and
+generalization *hurt* (eval_loss 0.31→0.66). v4 then added 1,442 **targeted** rain/night
+frames via the flywheel — and the mined buckets still *regressed*. For this model, scaling
+data is not the lever for rare-hazard recall; the bottleneck is model-side (input resolution,
+tiny-box weighting). The regression gate correctly **blocked** the v4 candidate — v3 remains
+production. See [`DEBUGGING_POSTMORTEM.md`](DEBUGGING_POSTMORTEM.md), [`FLYWHEEL.md`](FLYWHEEL.md),
+[`FLYWHEEL_V4_FINDINGS.md`](FLYWHEEL_V4_FINDINGS.md), and the generated
+[`results/mlops_report.md`](results/mlops_report.md).
+
+### Deployment / inference
+
+NF4 quantization (7.5 GB → 2.4 GB, ~3.1×) fits a T4 with headroom; ~2× via torch.compile.
+A bottleneck-driven inference study (decode is memory-bandwidth-bound → quantization +
+prompt-lookup speculative decoding, quality-gated) is in
+[`INFERENCE_OPTIMIZATION.md`](INFERENCE_OPTIMIZATION.md) with a runnable benchmark
+(`scripts/inference_benchmark.py`). *Latency is ~3–5 s/image — an autoregressive VLM; framed as
+a compression + speedup + throughput story, not real-time.*
 
 ### Limitations
-- **Low recall on the rare long tail** — recall @ IoU 0.5 is 24%; the model is conservative and
-  misses many rare hazards (e.g. `unusual_object`, 24 instances, never detected). This, not
-  localization, is the weak axis: precision (40%) and box tightness (mean IoU 0.67 on matches) are
-  strong. More data on the rarest classes is the main lever.
-- **Narrow training distribution** — 7,228 train frames from nuScenes v1.0-trainval, predominantly
-  daytime; night and heavy weather are out of distribution.
-- **Mild overfitting** — v3 eval loss (0.66) is ~2x train loss (0.40); fewer epochs would help recall.
-- **Dense-frame parse failures now rare (~1.3%)** — raising the token budget to 768 cut truncated
-  outputs to 14/1041 frames (98.7% parse), up from ~76% under the old 1024-cap run.
+- **Low recall on the rare long tail** — recall @ IoU 0.5 is 24% (v3); the model is conservative
+  and misses many rare hazards (e.g. `unusual_object`, 24 instances, never detected). This, not
+  localization, is the weak axis: precision (40%) and box tightness (mean IoU 0.67 on matches)
+  are strong. **More data is demonstrably not the lever** — see the v4 finding above.
+- **Narrow training distribution** — nuScenes v1.0-trainval, predominantly daytime; night and
+  heavy weather are out of distribution, and targeted adverse-weather mining did not close it.
+- **Mild overfitting (v3)** — eval loss (0.66) is ~2× train loss (0.40). v4 trained clean
+  (3 epochs, eval_loss 0.694, no overfit) but still regressed the mined buckets.
+- **Dense-frame parse failures rare** — 98.7% parse (v3) / 97.4% (v4) after raising the token
+  budget to 768.
 - Research / offline-evaluation use only — not for real-time or safety-critical control.
+
+> **Honesty note.** This is a portfolio project optimized for lifecycle rigor over a headline
+> accuracy number. It surfaces and diagnoses real failures (a coordinate-convention bug that
+> zeroed IoU; naive and targeted data scaling both failing to lift recall) rather than
+> reporting a cherry-picked win.
 
 ---
 

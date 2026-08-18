@@ -1,0 +1,33 @@
+{
+  "_about": "Versioned metrics registry for DriveSense-VLM. Source of truth for model-vs-model comparison, the regression gate, and drift. All L1/L4 numbers are measured on the FIXED 1,041-frame v3 test set (v2 used a different 345-frame test set, so its L1/L4 are not directly comparable and are null here; v2 contributes the eval_loss trajectory and the naive-scaling data point).",
+  "test_set": {"frames": 1041, "note": "fixed across v3 and v4 for apples-to-apples comparison"},
+  "production": "v3",
+  "models": {
+    "v2": {
+      "train_examples": 2754, "epochs": 5, "eval_loss": 0.31,
+      "l1": null, "l4": null,
+      "note": "best generalization; different (345-frame) test set — not directly comparable to v3/v4"
+    },
+    "v3": {
+      "train_examples": 7228, "epochs": 5, "eval_loss": 0.66,
+      "l1": {"precision": 0.40, "recall": 0.24, "f1": 0.30, "mean_iou": 0.67, "class_acc": 0.94, "parse_rate": 0.987},
+      "l4_det_at_0.5": {"overall": 0.28, "tiny": 0.228, "small": 0.464, "medium": 0.526, "rain": 0.125, "night_tiny": 0.127, "clear_medium": 0.69},
+      "train_label_dist": {"high_density": 6200, "jaywalking": 5473, "construction_zone": 4957, "occluded_pedestrian": 1638, "cyclist_proximity": 1232, "unusual_object": 111, "no_hazard": 0},
+      "note": "naive scale-up 2754->7228 doubled eval_loss (0.31->0.66) — generalization hurt"
+    },
+    "v4": {
+      "train_examples": 8670, "epochs": 3, "eval_loss": 0.694,
+      "l1": {"precision": 0.37, "recall": 0.19, "f1": 0.25, "mean_iou": 0.656, "class_acc": 0.946, "parse_rate": 0.974},
+      "l4_det_at_0.5": {"overall": 0.23, "tiny": 0.172, "small": 0.429, "medium": 0.526, "rain": 0.074, "night_tiny": 0.107, "clear_medium": 0.69},
+      "train_label_dist": {"high_density": 6479, "jaywalking": 5595, "construction_zone": 5523, "occluded_pedestrian": 2077, "cyclist_proximity": 1307, "unusual_object": 200, "no_hazard": 216},
+      "targeted_add": 1442, "no_hazard_added": 216,
+      "note": "targeted +1442 adverse frames; clean train (no overfit) but regressed the mined buckets"
+    }
+  },
+  "gate_policy": {
+    "weak_buckets": ["rain", "night_tiny", "tiny"],
+    "metric": "l4_det_at_0.5",
+    "tolerance": 0.0,
+    "rule": "BLOCK a candidate if any weak bucket drops below (production - tolerance)"
+  }
+}
