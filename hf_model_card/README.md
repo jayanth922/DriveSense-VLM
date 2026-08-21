@@ -118,8 +118,40 @@ not data volume.
 ### Demo quantization
 
 The T4 Spaces demo loads the model with bitsandbytes NF4 (4-bit, double-quant, bf16 compute) to
-fit the free-tier 16 GB GPU. This is a memory-fit measure for the demo; no separately benchmarked
-compression/latency numbers are claimed here.
+fit the free-tier 16 GB GPU. This is a **memory-fit** measure for the demo -- see the measured
+numbers below for what that costs.
+
+### Inference (measured, single T4)
+
+Decode is memory-bandwidth-bound: the fp16 baseline converts only **31.8%** of the T4's
+320 GB/s HBM ceiling into useful decode work. Each lever below is picked to attack that.
+
+| config | decode tok/s | TTFT | e2e p50 | weights | vs fp16 output |
+|---|---|---|---|---|---|
+| fp16 (baseline) | 17.0 | 727 ms | 11.64 s | ~6.0 GB | reference |
+| **fp16 + prompt-lookup** | **20.4** (+20%) | 727 ms | **9.79 s** (-16%) | ~6.0 GB | **exact_match 1.00** |
+| NF4 (4-bit) | 12.6 (*slower*) | 727 ms | ~15.9 s | **2.63 GB** | char_sim 0.36 |
+
+- **Prompt-lookup speculative decoding is a free win.** The structured-JSON output repeats
+  prompt tokens verbatim (schema keys, class names), so an n-gram drafter lands often.
+  Verification is exact, so output is **bit-identical** to fp16 -- a latency win at zero
+  quality cost.
+- **NF4 is a memory lever, not a speedup.** It shrinks weights ~2.3x (6.0 -> 2.63 GB) to fit
+  a 16 GB card, but decode gets *slower* (dequant overhead dominates at batch 1) **and the
+  output drifts** (char_sim 0.36). For a model emitting numeric bounding boxes, drift means a
+  moved box -- so NF4 ships only behind an L1/L4 re-eval, never on a VRAM number alone.
+- **Batching is the throughput lever** (offline/fleet use): fp16 aggregate decode
+  14.9 -> **33.7 tok/s at batch 4**.
+
+> **Honest gaps.** vLLM returned null on this T4 image (env/build constraint), so no vLLM
+> row is claimed rather than fabricated. Quality figures are *divergence from the fp16
+> output*, not accuracy against ground truth -- the right question for a serving change,
+> but not a substitute for the L1/L4 eval above.
+
+Full study (diagnosis, roofline, quality gate, percentiles) is in
+[`INFERENCE_OPTIMIZATION.md`](https://github.com/jayanth922/DriveSense-VLM/blob/main/INFERENCE_OPTIMIZATION.md);
+reproduce with
+[`scripts/inference_benchmark.py`](https://github.com/jayanth922/DriveSense-VLM/blob/main/scripts/inference_benchmark.py).
 
 ---
 
