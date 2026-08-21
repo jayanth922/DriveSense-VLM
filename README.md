@@ -16,6 +16,46 @@ foundation model only writes the severity/reasoning/action text for each real bo
 
 ---
 
+## The 30-second version
+
+A complete, self-improving **data flywheel** for a rare-hazard perception model —
+`mine → auto-label → gate → train → evaluate → gate → analyze failures → mine again` —
+built end-to-end and run for two full turns.
+
+Mining is **distributed**: a PySpark ETL (`Phase 1a-spark`) scores every nuScenes frame
+across 6 composite rarity signals with explicit schemas, then computes the analytics that
+drive frame selection — signal co-occurrence, per-scene richness, and temporal burst
+detection. Bounding boxes are **projected from 3-D ground truth**, never model-invented.
+
+**Three things this repo is actually about:**
+
+1. **The flywheel works, and it returned an honest negative.** Turn v3→v4 mined 1,442
+   *targeted* rain/night frames aimed exactly at the weakest buckets. Those buckets
+   **regressed** (rain det@0.5 12.5% → 7.4%), the regression gate **blocked the candidate**,
+   and v3 stayed in production. Two data-scaling experiments — naive (v2→v3) and targeted
+   (v3→v4) — now point the same way: for this model, **more data is not the lever**; the
+   bottleneck is model-side (input resolution, tiny-box weighting).
+2. **Evaluation is built to be trusted, not to flatter.** A 4-level framework (grounding,
+   reasoning, production, robustness), GT-hazard-centric stratified metrics where a miss
+   counts as IoU 0, a pre-training label-quality gate, and an all-zero-IoU abort that
+   refuses to report garbage predictions. It caught a coordinate-convention bug that had
+   been silently zeroing every IoU.
+3. **Inference is diagnosed, not guessed.** Decode is memory-bandwidth-bound (fp16 converts
+   31.8% of the T4's HBM ceiling into useful work), so each lever is chosen to attack *that*:
+   prompt-lookup speculative decoding for latency (**bit-exact**, +20%), batching for
+   throughput (2.3×), quantization for **memory only** — it makes decode *slower*, and we
+   say so.
+
+**Status: all six pillars complete and pushed to `main`** — flywheel, VLM fine-tuning,
+perception/L4 robustness, inference study, MLOps (registry + regression gate + CI), and
+evaluation rigor. Every number below is traceable: detection →
+[`results/metrics_registry.json`](results/metrics_registry.json); inference →
+[`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md), reproducible with
+[`scripts/inference_benchmark.py`](scripts/inference_benchmark.py). Remaining work is one
+Colab GPU run — see [What's left](#whats-left-future-work); none of it is blocking.
+
+---
+
 ## Results (honest, measured on a fixed test set)
 
 DriveSense-VLM is an end-to-end pipeline that **mines** rare driving hazards, **auto-labels**
@@ -78,6 +118,15 @@ production. See [`DEBUGGING_POSTMORTEM.md`](DEBUGGING_POSTMORTEM.md), [`FLYWHEEL
 Measured on a single T4 (16 GB, 320 GB/s HBM). Decode is **memory-bandwidth-bound** — fp16
 converts 31.8% of HBM bandwidth into useful decode work — so each lever is chosen to attack
 that bottleneck:
+
+| config | decode tok/s | TTFT | e2e p50 | weights | HBM roofline | vs fp16 output |
+|---|---|---|---|---|---|---|
+| fp16 (baseline) | 17.0 | 727 ms | 11.64 s | ~6.0 GB | 31.8% | reference |
+| **fp16 + prompt-lookup** | **20.4** (+20%) | 727 ms | **9.79 s** (−16%) | ~6.0 GB | **38.2%** | **exact_match 1.00** |
+| NF4 (4-bit) | 12.6 (*slower*) | 727 ms | ~15.9 s | **2.63 GB** | 8.6% | char_sim 0.36 |
+| INT8 | 4.6 | 727 ms | 53.53 s | ~3.5 GB | — | char_sim 0.29 |
+
+Throughput (fp16 aggregate decode): **14.9 → 33.7 tok/s at batch 4** (~2.3×).
 
 - **Latency: prompt-lookup speculative decoding** — +20% decode throughput (17.0 → 20.4 tok/s),
   end-to-end 11.64 s → 9.79 s, at **bit-exact** output (exact_match 1.00 vs fp16).
@@ -182,6 +231,59 @@ than reporting an all-zero-IoU run (which would indicate boxless/garbage predict
 
 ---
 
+## Repo map
+
+| Path | What it is |
+|---|---|
+| `README.md` | **This file — the authoritative front door.** Status, results, what's left. |
+| `FLYWHEEL.md` | The mine→label→gate→train→eval→gate loop, stage by stage |
+| `FLYWHEEL_V4_FINDINGS.md` | The v3→v4 turn in full: what was mined, what regressed, why |
+| `DEBUGGING_POSTMORTEM.md` | Three real failures diagnosed (coordinate bug, naive scaling, targeted scaling) |
+| `INFERENCE_OPTIMIZATION.md` | Bottleneck-driven inference study; **§7 = the measured T4 results** |
+| `MODEL_CARD.md` / `hf_model_card/` | Model cards (repo + HuggingFace-facing) |
+| `results/metrics_registry.json` | **Source of truth** for v2/v3/v4 metrics + the gate policy |
+| `results/mlops_report.md` | Generated v2→v3→v4 comparison + BLOCK verdict |
+| `mlops_report.py` | Builds the report; `--gate` exits non-zero on regression (used by CI) |
+| `scripts/inference_benchmark.py` | v2 benchmark harness — reproduces §7 (batching, percentiles, equivalence gate) |
+| `scripts/v4/` | The v4 flywheel turn's pipeline (mine → label → build → finalize) |
+| `scripts/` | Pipeline CLIs: filter, annotate, train, evaluate, mine, gate, ship |
+| `src/drivesense/` | Library: `data/`, `training/`, `eval/`, `inference/`, `monitoring/` |
+| `src/drivesense/data/spark_pipeline.py` | **Phase 1a-spark** — distributed PySpark rarity-scoring + analytics ETL |
+| `scripts/run_spark_pipeline.py` | Spark ETL entry point (`--skip-extraction`, `--analytics-only`) |
+| `docs/` | Deep dives: observability, closed loop, AV2 integration, TensorRT runbook |
+| `configs/*.yaml` | All hyperparameters and paths — single source of truth, never hardcoded |
+| `tests/` | 652 tests, CPU-only and mock-backed (no GPU, downloads, or API keys) |
+| `demo/` | Gradio app for HuggingFace Spaces (T4, NF4) |
+| `notebooks/` | Colab execution notebooks (data → training → optimization → eval) |
+| `slurm/` | HPC job scripts (alternative to Colab) |
+| `.github/workflows/ci.yml` | Tests + mock pipeline smoke + the regression gate |
+
+---
+
+## What's left (future work)
+
+Everything below needs **a single Colab GPU run**. None of it is blocking, and none of it
+changes a published number — these are open threads recorded honestly rather than hidden.
+
+1. **Re-run the v2 benchmark on a T4** to settle the three measurement caveats documented in
+   [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md):
+   - **(i)** fp16 batch-1 reads 17.0 tok/s in one table and 14.9 in the other (different
+     runs) — decides whether the batching gain is **2.3× or 2.0×**;
+   - **(iii)** TTFT is identical at 727 ms across all five configs — plausible if prefill is
+     vision-encoder-dominated, but it needs confirming it wasn't carried over;
+   - **(ii)** replace the hardcoded `WEIGHT_GB` nf4 = 2.2 in `scripts/inference_benchmark.py`
+     with the measured **2.63 GB** — the NF4/INT8 roofline column currently reads ~16% low.
+     (fp16 is correct at 6.0, so the headline fp16/prompt-lookup numbers are unaffected.)
+   The v2 harness measures all of these under one run, so a single execution resolves all three.
+2. **Execute [`docs/TENSORRT_RUNBOOK.md`](docs/TENSORRT_RUNBOOK.md) on a Colab A100** for one
+   real TensorRT-vs-HF speedup row. ⚠️ **Planned and unexecuted** — the runbook is a planning
+   document with decision points, and **no TensorRT result is claimed anywhere in this repo.**
+3. **Optional — v4b ablation:** retrain dropping the 216 `no_hazard` negatives introduced in
+   v4, to test the recall-suppression hypothesis. If rain/night recall recovers, the negatives
+   were the culprit; if not, the bottleneck is confirmed model-side.
+
+---
+
 ## Tech stack
 
 | Component | Technology | Notes |
@@ -191,6 +293,7 @@ than reporting an all-zero-IoU run (which would indicate boxless/garbage predict
 | Training | HuggingFace Transformers | LoRA SFT, prefix masking, bf16 |
 | Demo quantization | bitsandbytes NF4 (4-bit) | HF Spaces T4 demo |
 | Data | nuScenes v1.0-trainval | rare-hazard filtered, GT-projected boxes |
+| Distributed ETL | PySpark | 6-signal rarity scoring + analytics (explicit schemas, no inferSchema) |
 | Annotation | Anthropic Claude | describe-only (severity/reasoning/action) |
 | Tracking | Weights & Biases | training metrics |
 | Lint / format | Ruff + Black | line-length = 100 |

@@ -1,5 +1,9 @@
 # DriveSense-VLM — v4 Targeted-Flywheel Turn: Findings
 
+> Part of **[DriveSense-VLM](README.md)** — see the README for status, the full results tables, and the canonical [What's left](README.md#whats-left-future-work).
+> Detection numbers trace to [`results/metrics_registry.json`](results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+
+
 **TL;DR.** I closed the data flywheel end-to-end — mine rare-hazard frames → auto-label
 them with a foundation model behind a validation gate → merge leakage-safe → fine-tune →
 evaluate with a coordinate-correct pipeline → compare against the previous model on a
@@ -126,16 +130,28 @@ verdict above follows directly from the measured metrics.)
 
 ## Suggested next steps (in priority order)
 
+The canonical, repo-wide list lives in the README's
+[What's left](README.md#whats-left-future-work) section — not duplicated here. The two
+levers this turn's diagnosis points to specifically:
+
 1. **Ablation (cheap, isolates the top hypothesis):** retrain v4b with **zero `no_hazard`**
    examples (pure targeted positives) and re-eval. If rain/night recall recovers, the
    negatives were the culprit; if not, it's model-side.
 2. **Model-side lever:** raise vision resolution or add tiny-box loss weighting — the L4 map
    says size is the dominant factor, so this is where the real gains are.
-3. **Deploy pillar:** real TensorRT export (currently falls back to torch.compile).
-4. **Package:** this document + the v2→v3→v4 comparison as the portfolio narrative — an
-   honest, diagnosed flywheel turn with a working regression gate.
 
-## Reproducibility / artifacts (on the persistent `/workspace` volume)
+(The deploy pillar's TensorRT export is **planned and unexecuted** — see
+[`docs/TENSORRT_RUNBOOK.md`](docs/TENSORRT_RUNBOOK.md). No TensorRT speedup is claimed
+anywhere in this repo. The measured inference work that *is* done is in
+[`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).)
+
+## Reproducibility / artifacts
+
+⚠️ The paths below were on the **ephemeral RunPod `/workspace` volume and no longer exist.**
+They are recorded for provenance — to show what each stage produced and which script wrote
+it — not as retrievable files. The artifacts that survive are committed under
+[`results/v4/`](results/v4/), and the metrics themselves are in
+[`results/metrics_registry.json`](results/metrics_registry.json).
 
 - v4 SFT add: `sft_train_ready_v4/sft_train.jsonl` (1,442) — labeler `scripts/v4/v4_batch_label.py`
 - v4 train set: `sft_train_ready_v4_merged/` (8,670 / 889 / 1,041) — `scripts/v4/v4_build_trainset.py`

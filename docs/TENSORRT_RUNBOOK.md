@@ -1,5 +1,9 @@
 # TensorRT edge-deployment runbook (Colab A100, next session)
 
+> Part of **[DriveSense-VLM](../README.md)** — tracked as item 2 of
+> [What's left](../README.md#whats-left-future-work). **Future work, not a result:**
+> no TensorRT speedup is claimed anywhere in this repo.
+
 **Status: planning document.** Written with no GPU access in this sandbox —
 every command below is ready to execute, but nothing in this doc has been run
 on real hardware. Decision points are marked explicitly so the session

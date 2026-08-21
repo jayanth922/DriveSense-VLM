@@ -1,5 +1,9 @@
 # DriveSense-VLM — Inference Optimization Study
 
+> Part of **[DriveSense-VLM](README.md)** — see the README for status, the full results tables, and the canonical [What's left](README.md#whats-left-future-work).
+> Detection numbers trace to [`results/metrics_registry.json`](results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+
+
 A bottleneck-driven optimization study for the DriveSense-VLM (Qwen2.5-VL-3B LoRA)
 serving path. The goal is **measured, quality-preserved speedups derived from the actual
 bottleneck**, not adoption of a serving framework for its own sake.
@@ -125,6 +129,10 @@ Throughput scaling (fp16, decode tok/s aggregate):
 > is almost certainly peak/allocated VRAM, not weights. Treat it as unverified.
 > (iii) TTFT is identical (727 ms) across all five configs; prefill is dominated by the vision
 > encoder, but confirm it was measured per-config rather than carried over.
+>
+> All three are tracked as item 1 of the README's
+> [What's left](README.md#whats-left-future-work); the v2 harness measures them under one
+> run, so a single Colab T4 execution resolves all three.
 
 ### What the numbers say
 

@@ -1,5 +1,9 @@
 # DriveSense-VLM — Debugging Postmortem
 
+> Part of **[DriveSense-VLM](README.md)** — see the README for status, the full results tables, and the canonical [What's left](README.md#whats-left-future-work).
+> Detection numbers trace to [`results/metrics_registry.json`](results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+
+
 Three real failures found and diagnosed across v2→v3→v4. The value of this project is not a
 high accuracy number — it is a rigorous lifecycle that *surfaces* failures and roots them out.
 Every number below is measured on the fixed 1,041-frame test set.

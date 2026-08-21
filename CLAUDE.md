@@ -6,7 +6,13 @@ SFT-optimized VLM for AV rare hazard detection using Qwen2.5-VL-3B.
 
 ## Current Phase
 
-ALL PHASES COMPLETE ✅ (Phase 5: Documentation & Model Card)
+ALL PHASES COMPLETE ✅ — all six pillars pushed to `main` (flywheel, VLM fine-tune,
+perception/L4, inference study, MLOps gate + CI, eval rigor). Repo ~99% complete.
+
+**Canonical sources of truth:** detection metrics → `results/metrics_registry.json`;
+inference metrics → `INFERENCE_OPTIMIZATION.md` §7 (reproducible via `scripts/inference_benchmark.py`).
+**Remaining work** is one Colab GPU run — see the README's "What's left" section (the single
+canonical list; do not duplicate it elsewhere).
 
 ## Architecture Decisions
 
@@ -203,7 +209,7 @@ black src/
 | 2a | LoRA SFT training on HPC | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
 | 3a | LoRA merge + 4-bit quantization (legacy) | ✅ Complete |
-| 3b | TensorRT ViT compilation | ✅ Complete |
+| 3b | TensorRT ViT compilation | ⚠️ Code complete, **never run on a GPU** — see `docs/TENSORRT_RUNBOOK.md`; no speedup is claimed |
 | 3c | vLLM production serving setup | ✅ Complete |
 | 3d | vLLM production serving | ✅ Complete |
 | 4a | Gradio demo on HF Spaces | ✅ Complete |
