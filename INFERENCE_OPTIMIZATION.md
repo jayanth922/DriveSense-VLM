@@ -33,9 +33,15 @@ change the memory-bound regime.
 | lever | why it targets the bottleneck | expected effect |
 |---|---|---|
 | **Prompt-lookup spec. decoding** | Structured JSON repeats tokens (keys, brackets, class names) verbatim → an n-gram drafter proposes them, verified in one pass → multiple tokens per forward step. Draft-free (no 2nd model). | fewer decode steps → **latency ↓**, output **identical** (greedy-equivalent) |
-| **NF4 / INT8 quantization** | Weights are the bytes being streamed each decode step → shrink them → higher effective bandwidth. | **VRAM ↓ ~3×**, decode tok/s **↑**; quality gated by L1 F1 |
-| **torch.compile / CUDA graphs** | Removes Python/launch overhead per step; fuses kernels. | steady-state tok/s **↑** (constant-factor) |
+| **NF4 / INT8 quantization** | Weights are the bytes being streamed each decode step → shrink them → higher effective bandwidth. | *Predicted:* **VRAM ↓ ~3×**, decode tok/s **↑**. ⚠️ **Measured: VRAM ↓ 2.3×, decode tok/s ↓** — see §7 |
+| **torch.compile / CUDA graphs** | Removes Python/launch overhead per step; fuses kernels. | *Predicted:* steady-state tok/s **↑** (constant-factor). ⚠️ **Not measured** — no torch.compile row in §7 |
 | **(context) continuous batching** | Amortizes weight reads across concurrent requests → throughput scales even though per-request latency doesn't. | **throughput ↑** for offline/fleet eval |
+
+> **This table is the pre-measurement hypothesis.** §7 reports what the T4 actually did.
+> One prediction held (prompt-lookup: fewer decode steps, identical output) and one was
+> refuted (quantization raised effective bandwidth in theory, but at batch 1 the dequant
+> cost dominates and decode gets *slower*). The rows are kept as written rather than
+> retro-fitted to the result — the gap between the two is the finding.
 
 Explicitly **not** claiming: sub-500 ms / real-time / beats-YOLO. This is an autoregressive
 VLM; the honest story is *latency reduction + memory reduction with quality preserved*, and a
@@ -109,12 +115,23 @@ Throughput scaling (fp16, decode tok/s aggregate):
 | fp16 | 14.9 | 23.8 | **33.7** |
 | nf4 | 11.1 | 18.2 | 29.0 |
 
+> **Three measurement caveats, flagged rather than smoothed over.**
+> (i) fp16 batch-1 reads **17.0** tok/s in the config table above but **14.9** here — the two
+> tables come from different runs, so the 2.3× batching figure is computed against this
+> table's own 14.9 baseline; against 17.0 it would be 2.0×. Re-run both under one harness
+> before quoting a single batch-1 number.
+> (ii) The `nf4 + prompt-lookup` VRAM figure (4.42 GB) sits in a column headed *weights*, but
+> plain NF4 weights are 2.63 GB and prompt-lookup does not change weight bytes — that figure
+> is almost certainly peak/allocated VRAM, not weights. Treat it as unverified.
+> (iii) TTFT is identical (727 ms) across all five configs; prefill is dominated by the vision
+> encoder, but confirm it was measured per-config rather than carried over.
+
 ### What the numbers say
 
 **1. Prompt-lookup speculative decoding is a free win.** On this workload the prompt
 and the target output share long verbatim spans (the fixed system/schema tokens, class
 names, coordinate scaffolding), so an n-gram draft from the prompt lands often. Result:
-**+20% decode throughput (17.0 → 20.4 tok/s), −17% end-to-end latency (11.64 → 9.79 s),
+**+20% decode throughput (17.0 → 20.4 tok/s), −16% end-to-end latency (11.64 → 9.79 s),
 and roofline utilization from 31.8% → 38.2% — at exact_match = 1.00 vs the fp16 baseline.**
 Zero quality cost because verification is exact; a mismatched draft token is simply
 rejected. This is the headline optimization: same weights, same accuracy, measurably
@@ -145,11 +162,12 @@ serves more sequences. This is the correct axis for an offline mining/auto-label
 
 ### The recommendation (and why it's not just "run a serving framework")
 
-For **latency-sensitive single-request** serving: **fp16 + prompt-lookup** — 17% faster,
-bit-exact. For **offline batch** (the flywheel's own auto-labeling loop): **fp16 + batch 4**
-for 2.3× throughput. Reserve **NF4** for the *memory-constrained* case (fitting the model or
-a longer context on a 16 GB card), accepted only behind an L1/L4 quality gate because of the
-measured output drift. INT8 is not recommended on this hardware/workload.
+For **latency-sensitive single-request** serving: **fp16 + prompt-lookup** — 16% faster
+end-to-end (+20% decode throughput), bit-exact. For **offline batch** (the flywheel's
+own auto-labeling loop): **fp16 + batch 4** for 2.3× throughput. Reserve **NF4** for the
+*memory-constrained* case (fitting the model or a longer context on a 16 GB card),
+accepted only behind an L1/L4 quality gate because of the measured output drift.
+INT8 is not recommended on this hardware/workload.
 
 The value here is the **decision framework, measured on real hardware**: identify the
 bottleneck (bandwidth-bound decode, 31.8% roofline), pick the optimization that attacks

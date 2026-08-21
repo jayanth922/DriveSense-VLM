@@ -75,12 +75,23 @@ production. See [`DEBUGGING_POSTMORTEM.md`](DEBUGGING_POSTMORTEM.md), [`FLYWHEEL
 
 ### Deployment / inference
 
-NF4 quantization (7.5 GB → 2.4 GB, ~3.1×) fits a T4 with headroom; ~2× via torch.compile.
-A bottleneck-driven inference study (decode is memory-bandwidth-bound → quantization +
-prompt-lookup speculative decoding, quality-gated) is in
-[`INFERENCE_OPTIMIZATION.md`](INFERENCE_OPTIMIZATION.md) with a runnable benchmark
-(`scripts/inference_benchmark.py`). *Latency is ~3–5 s/image — an autoregressive VLM; framed as
-a compression + speedup + throughput story, not real-time.*
+Measured on a single T4 (16 GB, 320 GB/s HBM). Decode is **memory-bandwidth-bound** — fp16
+converts 31.8% of HBM bandwidth into useful decode work — so each lever is chosen to attack
+that bottleneck:
+
+- **Latency: prompt-lookup speculative decoding** — +20% decode throughput (17.0 → 20.4 tok/s),
+  end-to-end 11.64 s → 9.79 s, at **bit-exact** output (exact_match 1.00 vs fp16).
+- **Throughput: batching** — fp16 aggregate 14.9 → 33.7 tok/s at batch 4 (~2.3×), the right
+  axis for the offline auto-labeling loop.
+- **Memory (not latency): NF4** — weights 6.0 GB → 2.63 GB (~2.3×) to fit a 16 GB card, but
+  decode gets *slower* (17.0 → 12.6 tok/s) and output drifts (char_sim 0.36 vs fp16), so it
+  ships only behind an L1/L4 quality gate. INT8 is worse (4.6 tok/s) and not recommended here.
+
+Full study — diagnosis, roofline, quality gate, and the measured table — is in
+[`INFERENCE_OPTIMIZATION.md`](INFERENCE_OPTIMIZATION.md), with a runnable benchmark
+(`scripts/inference_benchmark.py`). *End-to-end latency is seconds per image (11.6 s fp16 /
+9.8 s with prompt-lookup on T4, for a full multi-hazard JSON response) — this is an
+autoregressive VLM, framed as a compression + speedup + throughput story, not real-time.*
 
 ### Limitations
 - **Low recall on the rare long tail** — recall @ IoU 0.5 is 24% (v3); the model is conservative
