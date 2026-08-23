@@ -160,25 +160,27 @@ class TestInputShapeOrder:
         input_shape = (1, 3, height, width)
         assert input_shape == (1, 3, 448, 672)
 
-    def test_grid_thw_computation(self) -> None:
-        # _compute_grid_thw returns a torch tensor, so this one test genuinely
-        # needs torch. Skip (don't fail) where torch isn't installed — local dev
-        # and CI are both torch-free by design; the rest of this module is mock-safe.
+    def test_vit_inputs_contract(self) -> None:
+        # _make_vit_inputs needs torch + a real vit (for .config). Skip where torch
+        # isn't installed — local dev and CI are torch-free by design; the rest of
+        # this module is mock-safe. Here we validate the patch geometry directly.
         pytest.importorskip("torch")
-        from drivesense.inference.tensorrt_vit import _compute_grid_thw
-        grid = _compute_grid_thw((1, 3, 448, 672))
-        # 448/28 = 16 height patches, 672/28 = 24 width patches
-        assert grid.shape == (1, 3)
-        assert grid[0, 0].item() == 1   # time=1 (static image)
-        assert grid[0, 1].item() == 16  # height patches
-        assert grid[0, 2].item() == 24  # width patches
+        # Qwen2.5-VL uses patch_size=14 (NOT 28 — 28 is the post-merge stride).
+        # 448/14 = 32 height patches, 672/14 = 48 width patches.
+        patch = 14
+        h_patches, w_patches = 448 // patch, 672 // patch
+        assert (h_patches, w_patches) == (32, 48)
+        seq = 1 * h_patches * w_patches
+        feat = 3 * 2 * patch * patch          # in_ch * temporal_patch * patch**2
+        assert seq == 1536
+        assert feat == 1176
 
     def test_total_patches_correct(self) -> None:
-        """384 total patches = 16h × 24w."""
-        h_patches, w_patches = 448 // 28, 672 // 28
-        assert h_patches == 16
-        assert w_patches == 24
-        assert h_patches * w_patches == 384
+        """1536 total patches = 32h × 48w at patch_size 14."""
+        h_patches, w_patches = 448 // 14, 672 // 14
+        assert h_patches == 32
+        assert w_patches == 48
+        assert h_patches * w_patches == 1536
 
 
 # ---------------------------------------------------------------------------

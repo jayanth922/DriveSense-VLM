@@ -129,9 +129,9 @@ Decode is memory-bandwidth-bound: the fp16 baseline converts only **31.8%** of t
 
 | config | decode tok/s | TTFT | e2e p50 | weights | vs fp16 output |
 |---|---|---|---|---|---|
-| fp16 (baseline) | 17.0 | 727 ms | 11.64 s | ~6.0 GB | reference |
-| **fp16 + prompt-lookup** | **20.4** (+20%) | 727 ms | **9.79 s** (-16%) | ~6.0 GB | **exact_match 1.00** |
-| NF4 (4-bit) | 12.6 (*slower*) | 727 ms | ~15.9 s | **2.63 GB** | char_sim 0.36 |
+| fp16 (baseline) | 17.0 | 770 ms | 11.64 s | ~6.0 GB | reference |
+| **fp16 + prompt-lookup** | **20.4** (+20%) | 781 ms | **9.79 s** (-16%) | ~6.0 GB | **exact_match 1.00** |
+| NF4 (4-bit) | 12.6 (*slower*) | 820 ms | ~15.9 s | **2.63 GB** | char_sim 0.36 |
 
 - **Prompt-lookup speculative decoding is a free win.** The structured-JSON output repeats
   prompt tokens verbatim (schema keys, class names), so an n-gram drafter lands often.

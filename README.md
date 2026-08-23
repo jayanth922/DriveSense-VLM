@@ -127,10 +127,10 @@ that bottleneck:
 
 | config | decode tok/s | TTFT | e2e p50 | weights | HBM roofline | vs fp16 output |
 |---|---|---|---|---|---|---|
-| fp16 (baseline) | 17.0 | 727 ms | 11.64 s | ~6.0 GB | 31.8% | reference |
-| **fp16 + prompt-lookup** | **20.4** (+20%) | 727 ms | **9.79 s** (−16%) | ~6.0 GB | **38.2%** | **exact_match 1.00** |
-| NF4 (4-bit) | 12.6 (*slower*) | 727 ms | ~15.9 s | **2.63 GB** | 8.6% | char_sim 0.36 |
-| INT8 | 4.6 | 727 ms | 53.53 s | ~3.5 GB | — | char_sim 0.29 |
+| fp16 (baseline) | 17.0 | 770 ms | 11.64 s | ~6.0 GB | 31.8% | reference |
+| **fp16 + prompt-lookup** | **20.4** (+20%) | 781 ms | **9.79 s** (−16%) | ~6.0 GB | **38.2%** | **exact_match 1.00** |
+| NF4 (4-bit) | 12.6 (*slower*) | 820 ms | ~15.9 s | **2.63 GB** | 10.4% | char_sim 0.36 |
+| INT8 | 4.6 | ~1080 ms | 53.53 s | ~3.5 GB | 5.0% | char_sim 0.29 |
 
 Throughput (fp16 aggregate decode): **14.9 → 33.7 tok/s at batch 4** (~2.3×).
 
@@ -268,22 +268,30 @@ than reporting an all-zero-IoU run (which would indicate boxless/garbage predict
 
 ## What's left (future work)
 
-Everything below needs **a single Colab GPU run**. None of it is blocking, and none of it
-changes a published number — these are open threads recorded honestly rather than hidden.
+Items 1–2 are now **executed** (Kaggle T4, 2026-08-23); item 3 remains optional. None of it is
+blocking, and none of it changes a published detection number — these are threads recorded
+honestly rather than hidden.
 
-1. **Re-run the v2 benchmark on a T4** to settle the three measurement caveats documented in
-   [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md):
-   - **(i)** fp16 batch-1 reads 17.0 tok/s in one table and 14.9 in the other (different
-     runs) — decides whether the batching gain is **2.3× or 2.0×**;
-   - **(iii)** TTFT is identical at 727 ms across all five configs — plausible if prefill is
-     vision-encoder-dominated, but it needs confirming it wasn't carried over;
-   - **(ii)** replace the hardcoded `WEIGHT_GB` nf4 = 2.2 in `scripts/inference_benchmark.py`
-     with the measured **2.63 GB** — the NF4/INT8 roofline column currently reads ~16% low.
-     (fp16 is correct at 6.0, so the headline fp16/prompt-lookup numbers are unaffected.)
-   The v2 harness measures all of these under one run, so a single execution resolves all three.
-2. **Execute [`docs/TENSORRT_RUNBOOK.md`](docs/TENSORRT_RUNBOOK.md) on a Colab A100** for one
-   real TensorRT-vs-HF speedup row. ⚠️ **Planned and unexecuted** — the runbook is a planning
-   document with decision points, and **no TensorRT result is claimed anywhere in this repo.**
+1. ~~Re-run the v2 benchmark on a T4 to settle the three §7 measurement caveats.~~
+   **✅ Done** (single-harness T4 verification run — see
+   [`INFERENCE_OPTIMIZATION.md` §7 → Verification run](INFERENCE_OPTIMIZATION.md)):
+   - **(i)** the 17.0-vs-14.9 batch-1 split was two *definitions* (decode-only vs end-to-end),
+     not two runs — like-for-like batching gain is **~2.4×**;
+   - **(ii)** `WEIGHT_GB` nf4 corrected 2.2 → **2.63 GB**; NF4/INT8 roofline recomputed
+     (nf4 8.6 → 10.4%, int8 → 5.0%);
+   - **(iii)** TTFT is **not** identical — it rises with quantization (fp16 ~770 ms →
+     int8 ~1080 ms); the uniform 727 ms was carried over.
+2. ~~Execute the TensorRT runbook for a real ViT speedup row.~~ **✅ Done (negative finding)** —
+   executed on a Kaggle T4 (see
+   [`docs/TENSORRT_RUNBOOK.md` §6 Results](docs/TENSORRT_RUNBOOK.md#6-results--executed-on-kaggle-t4)):
+   - Fixed a real harness bug first (the ViT export path fed a `[1,3,448,672]` image at
+     `patch_size=28`; Qwen2.5-VL needs pre-patchified `[1536,1176]` + `grid_thw` at
+     `patch_size=14`). ViT forward then runs.
+   - **TensorRT is not viable** for this ViT: `torch.export` fails on Qwen2.5-VL's
+     **data-dependent window attention** (`get_window_index → cu_window_seqlens.tolist()`).
+     `torch.compile` compiles only via a graph break → **1.03×** (negligible). Eager ViT is
+     203 ms p50 on a T4. **Still no TensorRT speedup is claimed** — the deployed latency lever
+     stays fp16 + prompt-lookup. A documented negative with a named root cause.
 3. **Optional — v4b ablation:** retrain dropping the 216 `no_hazard` negatives introduced in
    v4, to test the recall-suppression hypothesis. If rain/night recall recovers, the negatives
    were the culprit; if not, the bottleneck is confirmed model-side.

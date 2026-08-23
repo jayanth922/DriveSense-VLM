@@ -33,7 +33,10 @@ USER = ("Analyze this dashcam image for safety hazards. Identify all hazards wit
         "boxes, classify each, assess severity, explain your reasoning, and recommend an "
         "action. Respond with JSON only.")
 T4_HBM_GBs = 320.0
-WEIGHT_GB = {"fp16": 6.0, "nf4": 2.2, "int8": 3.5}
+# Weight footprint used only for the roofline column (decode_tokps * WEIGHT_GB / HBM).
+# nf4 = 2.63 GB is the MEASURED bitsandbytes NF4 weight size for Qwen2.5-VL-3B (was 2.2,
+# which read the NF4/INT8 roofline ~16% low). fp16 (6.0) is exact; int8 (3.5) is approximate.
+WEIGHT_GB = {"fp16": 6.0, "nf4": 2.63, "int8": 3.5}  # nf4 measured on Kaggle T4 verification run
 
 
 def pct(xs, p):

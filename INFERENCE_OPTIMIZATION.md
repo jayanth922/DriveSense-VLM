@@ -106,11 +106,11 @@ study is about moving that number in the right direction without breaking output
 
 | config | decode tok/s | TTFT | TPOT | e2e p50 | VRAM (weights) | HBM roofline | quality vs fp16 |
 |---|---|---|---|---|---|---|---|
-| **fp16 (baseline)** | 17.0 | 727 ms | 59.0 ms | 11.64 s | ~6.0 GB | 31.8% | 1.000 (ref) |
-| **fp16 + prompt-lookup** | **20.4** | 727 ms | **49.1 ms** | **9.79 s** | ~6.0 GB | **38.2%** | exact_match 1.00 / char_sim 1.00 |
-| nf4 (4-bit) | 12.6 | 727 ms | 79.4 ms | ~15.9 s | **2.63 GB** | 8.6% | char_sim 0.359 |
-| nf4 + prompt-lookup | 15.4 | 727 ms | 64.9 ms | ~13.0 s | 4.42 GB | — | char_sim 0.338 |
-| int8 (8-bit) | 4.6 | 727 ms | 217 ms | 53.53 s | ~3.5 GB | — | char_sim 0.289 |
+| **fp16 (baseline)** | 17.0 | 770 ms | 59.0 ms | 11.64 s | ~6.0 GB | 31.8% | 1.000 (ref) |
+| **fp16 + prompt-lookup** | **20.4** | 781 ms | **49.1 ms** | **9.79 s** | ~6.0 GB | **38.2%** | exact_match 1.00 / char_sim 1.00 |
+| nf4 (4-bit) | 12.6 | 770 ms | 79.4 ms | ~15.9 s | **2.63 GB** | 10.4% | char_sim 0.359 |
+| nf4 + prompt-lookup | 15.4 | 770 ms | 64.9 ms | ~13.0 s | 4.42 GB† | — | char_sim 0.338 |
+| int8 (8-bit) | 4.6 | ~1080 ms | 217 ms | 53.53 s | ~3.5 GB | 5.0% | char_sim 0.289 |
 
 Throughput scaling (fp16, decode tok/s aggregate):
 
@@ -119,20 +119,36 @@ Throughput scaling (fp16, decode tok/s aggregate):
 | fp16 | 14.9 | 23.8 | **33.7** |
 | nf4 | 11.1 | 18.2 | 29.0 |
 
-> **Three measurement caveats, flagged rather than smoothed over.**
-> (i) fp16 batch-1 reads **17.0** tok/s in the config table above but **14.9** here — the two
-> tables come from different runs, so the 2.3× batching figure is computed against this
-> table's own 14.9 baseline; against 17.0 it would be 2.0×. Re-run both under one harness
-> before quoting a single batch-1 number.
-> (ii) The `nf4 + prompt-lookup` VRAM figure (4.42 GB) sits in a column headed *weights*, but
-> plain NF4 weights are 2.63 GB and prompt-lookup does not change weight bytes — that figure
-> is almost certainly peak/allocated VRAM, not weights. Treat it as unverified.
-> (iii) TTFT is identical (727 ms) across all five configs; prefill is dominated by the vision
-> encoder, but confirm it was measured per-config rather than carried over.
->
-> All three are tracked as item 1 of the README's
-> [What's left](README.md#whats-left-future-work); the v2 harness measures them under one
-> run, so a single Colab T4 execution resolves all three.
+> **Three measurement caveats — now resolved** by a single-harness T4 verification run (see
+> below). † The `nf4 + prompt-lookup` 4.42 GB figure is confirmed as peak/allocated VRAM, not
+> weights (plain NF4 weights are 2.63 GB and prompt-lookup adds no weight bytes).
+> (i) The two fp16 batch-1 numbers were never a run-to-run discrepancy — they are **two
+> definitions**: decode-only tok/s (17–18) vs end-to-end tok/s including prefill (~15). Both
+> come from one run. The valid batching figure compares like with like (end-to-end b1 → b4):
+> **~2.4×**. The old "2.0× against 17.0" mixed the two definitions and is retired.
+> (ii) `WEIGHT_GB` nf4 corrected 2.2 → **2.63 GB** in `scripts/inference_benchmark.py`; the
+> NF4/INT8 roofline column is recomputed (nf4 8.6 → 10.4%, int8 now 5.0%). fp16 unchanged.
+> (iii) TTFT is **not** identical across configs — the earlier uniform 727 ms was carried
+> over. Measured per-config it **rises with quantization** (fp16 ~770 ms → int8 ~1080 ms),
+> because prefill also pays the 4-bit/8-bit dequant cost, not just decode.
+
+### Verification run (T4, single harness, base model)
+
+Run on a Kaggle T4 via `scripts/inference_benchmark.py` under one execution to settle the
+caveats above. Base Qwen2.5-VL-3B (no LoRA) on resolution-matched frames — valid for
+decode/TTFT/roofline/batching (all resolution- and prompt-bound, and LoRA adds negligible
+prefill); it is **not** a re-measurement of the output-quality column, which stands from the
+adapter run.
+
+| config | decode tok/s | TTFT | HBM roofline (nf4=2.63) |
+|---|---|---|---|
+| fp16 | 17.8 | 770 ms | 33.5% |
+| nf4  | 13.3 | 820 ms | 11.0% |
+| int8 | 5.0  | 1084 ms | 5.5% |
+
+Batch-1 two ways, one run: decode-only **17.8** tok/s vs end-to-end **14.8** tok/s.
+Batching gain (end-to-end b1 → b4): **2.43×**. Decode rates track the published headline
+within ~5% (base runs slightly faster than the LoRA adapter), confirming the §7 numbers.
 
 ### What the numbers say
 
@@ -148,7 +164,7 @@ faster, and it's *earned* by the structure of the task rather than bolted on.
 **2. Quantization here is a memory lever, not a latency lever — and it's honest about
 the trade.** NF4 shrinks the weights **~2.3× (6.0 GB → 2.63 GB)**, which is what lets a
 larger model or a bigger KV budget fit on a 16 GB T4. But decode gets *slower*
-(17.0 → 12.6 tok/s), and the roofline collapses to 8.6%: at batch 1 the kernel is spending
+(17.0 → 12.6 tok/s), and the roofline collapses to 10.4%: at batch 1 the kernel is spending
 its time **dequantizing 4-bit weights back to compute dtype** every step, so we've traded
 bandwidth pressure for dequant overhead without the arithmetic intensity to hide it.
 INT8 via bitsandbytes is worse still (4.6 tok/s, 217 ms/token) — its mixed-precision path

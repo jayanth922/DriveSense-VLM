@@ -194,15 +194,9 @@ class ViTExtractor:
         shape = input_shape if input_shape is not None else self._input_shape
 
         vit, _ = self.extract_vit(model_dir)
-        grid_thw = _compute_grid_thw(shape)
+        dummy, grid_thw = _make_vit_inputs(vit, shape)
         wrapper = _ViTWrapper(vit, grid_thw)
         wrapper.eval()
-
-        dummy = _torch.zeros(  # type: ignore[union-attr]
-            shape,
-            dtype=_torch.float16,  # type: ignore[union-attr]
-            device=next(vit.parameters()).device,
-        )
 
         fallback_info: dict[str, Any] = {"onnx_method": "direct", "trt_method": None}
 
@@ -327,11 +321,10 @@ class ViTExtractor:
         eng_path = Path(engine_path) if engine_path else self._engine_path
 
         vit, _ = self.extract_vit(model_dir)
-        grid_thw = _compute_grid_thw(shape)
+        device = next(vit.parameters()).device
+        dummy, grid_thw = _make_vit_inputs(vit, shape, device=device)
         wrapper = _ViTWrapper(vit, grid_thw)
         wrapper.eval()
-        device = next(vit.parameters()).device
-        dummy = _torch.zeros(shape, dtype=_torch.float16, device=device)  # type: ignore[union-attr]
 
         results: dict[str, Any] = {
             "input_shape": list(shape),
@@ -435,14 +428,20 @@ class ViTExtractor:
                 model_dir, engine_path=engine_path if engine_path.suffix == ".engine" else None
             )
         except (RuntimeError, AttributeError) as exc:
-            if _TRT_AVAILABLE:
-                raise
+            # ONNX/TRT export failing is a DOCUMENTED negative outcome (Qwen2.5-VL's ViT
+            # uses window attention with dynamic cu_seqlens that don't export cleanly), NOT
+            # a hard stop. The ViT eager-vs-torch.compile benchmark is independent of ONNX,
+            # so still produce it — regardless of whether TensorRT is installed.
             logger.warning(
-                "ONNX/ViT export failed (TRT not installed) — E2E torch.compile fallback: %s",
+                "ONNX/ViT export failed — reporting eager/torch.compile ViT benchmark only: %s",
                 exc,
             )
             engine_path = out / "vit.torch_compile"
-            benchmark = _run_e2e_compile_benchmark(model_dir, out)
+            fb_path = out / "fallback_info.json"
+            fb = json.loads(fb_path.read_text()) if fb_path.exists() else {}
+            fb["export_failed_but_benchmarked"] = True
+            _save_fallback_info(out, fb)
+            benchmark = self.benchmark_vit(model_dir, engine_path=None)
 
         (out / "vit_benchmark.json").write_text(
             json.dumps(benchmark, indent=2), encoding="utf-8"
@@ -571,23 +570,42 @@ def _get_vision_encoder(model: Any) -> Any:
     )
 
 
-def _compute_grid_thw(input_shape: tuple[int, int, int, int]) -> Any:
-    """Compute Qwen2.5-VL grid_thw tensor for a fixed input resolution.
+def _make_vit_inputs(
+    vit: Any,
+    input_shape: tuple[int, int, int, int],
+    device: Any = None,
+    dtype: Any = None,
+) -> tuple[Any, Any]:
+    """Build Qwen2.5-VL vision-encoder inputs from a target image resolution.
 
-    Qwen2.5-VL uses 28×28 patches. For a 672×448 image:
-    height_patches = 448 / 28 = 16, width_patches = 672 / 28 = 24.
+    IMPORTANT — the Qwen2.5-VL ViT does NOT accept a ``[B, C, H, W]`` image tensor.
+    It consumes pre-patchified, flattened patches of shape
+    ``[seq_len, in_channels * temporal_patch_size * patch_size**2]`` together with
+    ``grid_thw = [[t, h_patches, w_patches]]`` where ``h_patches = H // patch_size``.
+    Feeding a raw image tensor is the input-contract bug that produced the
+    ``1280 vs 640`` hidden-size mismatch. ``patch_size`` is **14** for Qwen2.5-VL
+    (28 is the post-spatial-merge effective stride, not the patch size).
 
-    Args:
-        input_shape: [batch, channels, height, width].
+    For the default 448×672 shape: gh=32, gw=48, seq=1536, feat=3*2*14*14=1176.
 
     Returns:
-        LongTensor of shape [1, 3] = [[1, h_patches, w_patches]].
+        (dummy_patches [seq, feat], grid_thw [[1, gh, gw]]).
     """
+    cfg = getattr(vit, "config", None)
+    patch = int(getattr(cfg, "patch_size", 14) or 14)
+    tps = int(getattr(cfg, "temporal_patch_size", 2) or 2)
+    in_ch = int(getattr(cfg, "in_channels", getattr(cfg, "in_chans", 3)) or 3)
     _, _, h, w = input_shape
-    patch_size = 28
-    h_patches = h // patch_size
-    w_patches = w // patch_size
-    return _torch.tensor([[1, h_patches, w_patches]], dtype=_torch.long)  # type: ignore[union-attr]
+    gh, gw, t = h // patch, w // patch, 1
+    seq = t * gh * gw
+    feat = in_ch * tps * patch * patch
+    if device is None:
+        device = next(vit.parameters()).device
+    if dtype is None:
+        dtype = _torch.float16  # type: ignore[union-attr]
+    dummy = _torch.zeros((seq, feat), dtype=dtype, device=device)  # type: ignore[union-attr]
+    grid_thw = _torch.tensor([[t, gh, gw]], dtype=_torch.long, device=device)  # type: ignore[union-attr]
+    return dummy, grid_thw
 
 
 def _export_onnx_direct(wrapper: Any, dummy: Any, out_path: Path) -> None:

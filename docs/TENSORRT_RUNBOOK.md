@@ -1,13 +1,17 @@
-# TensorRT edge-deployment runbook (Colab A100, next session)
+# TensorRT edge-deployment runbook + results (executed on Kaggle T4)
 
-> Part of **[DriveSense-VLM](../README.md)** — tracked as item 2 of
-> [What's left](../README.md#whats-left-future-work). **Future work, not a result:**
-> no TensorRT speedup is claimed anywhere in this repo.
+> Part of **[DriveSense-VLM](../README.md)** — was item 2 of
+> [What's left](../README.md#whats-left-future-work).
 
-**Status: planning document.** Written with no GPU access in this sandbox —
-every command below is ready to execute, but nothing in this doc has been run
-on real hardware. Decision points are marked explicitly so the session
-doesn't stall if a step behaves differently than planned.
+**Status: EXECUTED on a Kaggle T4 (2026-08-23). Result — TensorRT ViT export is NOT
+viable for Qwen2.5-VL, with a single named root cause (data-dependent window attention).
+See [§6 Results](#6-results--executed-on-kaggle-t4).** The runbook (§§1–5) is retained as
+the plan that was followed; §6 records what actually happened. This is a documented negative
+finding, not a claimed speedup.
+
+> ⚠️ §2 below asserted the vision encoder has "no dynamic shapes" and is "export-friendly."
+> The real run **disproved that** for Qwen2.5-VL specifically — its ViT uses data-dependent
+> window attention. Read §6 for the correction.
 
 ## 1. Diagnosis of the "prior TensorRT failure"
 
@@ -253,3 +257,53 @@ This is a legitimate, defensible result either way — a negative finding with
 a named root cause (a specific unsupported op, a specific dynamic-shape
 constraint) is more credible than a forced partial win, and costs nothing to
 report honestly.
+
+## 6. Results — EXECUTED on Kaggle T4
+
+Run 2026-08-23 on a Kaggle T4 with `Qwen/Qwen2.5-VL-3B-Instruct` (base model — its vision
+encoder is identical to the fine-tuned model's, since LoRA does not touch the vision tower).
+Input 448×672 → 1536 patches. **ViT-only, not full end-to-end.**
+
+### 6.1 Harness bug found and fixed first
+
+The export/benchmark harness fed the ViT a `[1, 3, 448, 672]` **image** tensor at
+`patch_size=28`. Qwen2.5-VL's vision encoder does not take images — it takes **pre-patchified**
+input `[seq_len, in_ch·temporal·patch²] = [1536, 1176]` plus `grid_thw=[[1, 32, 48]]` at
+`patch_size=14`. That mismatch produced a `1280 vs 640` hidden-size crash. Fixed with
+`_make_vit_inputs()` in `src/drivesense/inference/tensorrt_vit.py`; `full_pipeline` was also
+made resilient (an export failure no longer aborts before benchmarking). Two stale unit tests
+(`tests/test_tensorrt.py`, which encoded the wrong `patch_size=28` / 384-patch assumption) were
+corrected. With the fix the ViT forward runs cleanly (output `[384, 2048]`).
+
+### 6.2 Measured (T4, p50 over 50 iters, 10 warmup)
+
+| Backend | ViT p50 (ms) | vs eager | Status |
+|---|---|---|---|
+| PyTorch eager | 203.1 | 1.00× | baseline |
+| torch.compile (default) | 197.9 | **1.03×** | compiles only with a graph break; negligible gain |
+| torch.compile (reduce-overhead) | — | — | CUDA-graph mode incompatible with the graph break |
+| TensorRT (via ONNX) | — | — | **export fails — not viable** |
+
+### 6.3 Root cause (single, named)
+
+Qwen2.5-VL's vision encoder uses **data-dependent window attention**: `get_window_index()`
+builds `cu_window_seqlens` via `cu_seqlens_tmp.tolist()` / `.item()`
+(`transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py:400`). Data-dependent control flow
+defeats every graph-capture backend:
+
+- **`torch.export`** (ONNX/TensorRT step 1) raises
+  `GuardOnDataDependentSymNode: Could not guard on data-dependent expression Eq(u16*u9, 0)`
+  at that line.
+- **`torch.jit.trace` → ONNX** raises `Exporting a ScriptModule is not supported`.
+- **`torch.compile`** succeeds only by inserting a graph break at that op — which is exactly
+  why its speedup is ~1.03× (nothing meaningful to fuse across the break).
+
+### 6.4 Conclusion
+
+TensorRT is **not viable** for this ViT without rewriting the window-index construction to be
+static-shape / graph-capturable — a real architectural property of Qwen2.5-VL, not a project
+shortfall. `torch.compile` is technically available but delivers no meaningful ViT speedup for
+the same reason. **Eager (203 ms p50 on a T4) is the practical ViT execution**, and the
+deployed latency lever remains **fp16 + prompt-lookup** (see `INFERENCE_OPTIMIZATION.md §7`),
+not TensorRT. Reported as a documented negative with a named root cause rather than a forced
+partial win — which was the explicit intent of §5.
