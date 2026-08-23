@@ -45,9 +45,10 @@ recommended ego-vehicle action.
 
 | | |
 |---|---|
-| **Dataset**       | 9,158 rare-hazard nuScenes v1.0-trainval frames (7,228/889/1,041), 3D-GT-projected boxes |
-| **Epochs**        | 5 |
-| **Train loss**    | 0.40 (eval loss 0.66 — mild overfitting) |
+| **Dataset (v3, production)** | 9,158 rare-hazard nuScenes v1.0-trainval frames (7,228/889/1,041), 3D-GT-projected boxes |
+| **Dataset (v4, blocked candidate)** | train 8,670 = 7,228 GT-projected (v3 base) + 1,442 FM-emitted `bbox_2d` (targeted mining, repaired not GT-verified); val 889 / test 1,041 GT-projected (shared, unchanged from v3) — see [FLYWHEEL_V4_FINDINGS.md](https://github.com/jayanth922/DriveSense-VLM/blob/main/FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment) |
+| **Epochs**        | 5 (v3 numbers below; v4 trained 3 epochs — see Evaluation table) |
+| **Train loss**    | 0.40 (eval loss 0.66 — mild overfitting; v3 numbers) |
 | **LoRA targets**  | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj` |
 | **Hardware**      | Single A100 |
 

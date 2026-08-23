@@ -11,8 +11,13 @@ with LoRA SFT to detect and explain **rare, safety-critical hazards** in autonom
 dashcam frames. The model outputs structured JSON: a per-hazard bounding box, a 7-class hazard
 label, severity, chain-of-thought reasoning, and a recommended ego-vehicle action.
 
-Bounding-box labels are **projected from nuScenes 3-D ground truth** (not model-invented); a
-foundation model only writes the severity/reasoning/action text for each real box.
+Bounding-box labels are **projected from nuScenes 3-D ground truth** for the v2/v3 base
+training set (7,228 of the v4 model's 8,670 train examples); a foundation model writes only
+the severity/reasoning/action text for each real box. The v4 targeted-mining addition (the
+other 1,442, 16.6%) is different: those boxes are **foundation-model-emitted**, not
+GT-projected — see [the label-provenance
+confound](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment) for what
+that means for v4's results. v3 remains the production model and is 100% GT-projected.
 
 ---
 
@@ -25,7 +30,8 @@ built end-to-end and run for two full turns.
 Mining is **distributed**: a PySpark ETL (`Phase 1a-spark`) scores every nuScenes frame
 across 6 composite rarity signals with explicit schemas, then computes the analytics that
 drive frame selection — signal co-occurrence, per-scene richness, and temporal burst
-detection. Bounding boxes are **projected from 3-D ground truth**, never model-invented.
+detection. Bounding boxes on the v2/v3 base set are **projected from 3-D ground truth**,
+never model-invented; the v4 targeted-mining turn below is the one exception — see below.
 
 **Three things this repo is actually about:**
 
@@ -170,7 +176,7 @@ rebuild of a broken VLM fine-tuning pipeline:
 | Skill | Implementation |
 |-------|---------------|
 | **Root-cause debugging** | Diagnosed a model that collapsed to constant output; traced it to VLM-invented bounding-box labels **and** a debug `max_steps=10` override that silently capped every training run at ~0.3 epochs |
-| **Data curation** | nuScenes rarity scoring (6 composite signals) + **3-D→2-D ground-truth box projection** with near-plane frustum clipping; LLM describe-only annotation (severity/reasoning/action per real box) |
+| **Data curation** | nuScenes rarity scoring (6 composite signals) + **3-D→2-D ground-truth box projection** with near-plane frustum clipping; LLM describe-only annotation (severity/reasoning/action per real box) — the v2/v3 base set; v4's targeted-mining addition instead has the FM emit boxes directly ([confound writeup](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment)) |
 | **Data quality gates** | A hard, pre-training validation gate (`run_label_validation.py`) that blocks collapsed/degenerate label sets (box-diversity, area, cross-frame duplication) before any training |
 | **VLM fine-tuning** | LoRA SFT on Qwen2.5-VL-3B with prefix-masked labels and a variable-patch data collator; bf16 on A100 |
 | **Rigorous, honest evaluation** | Grounding (IoU + Hungarian matching) with real-checkpoint loading, a stratification guard, and an all-zero-IoU abort that refuses to report boxless/garbage predictions |
@@ -292,12 +298,15 @@ changes a published number — these are open threads recorded honestly rather t
 | Fine-tuning | LoRA via PEFT | rank 32, alpha 64 |
 | Training | HuggingFace Transformers | LoRA SFT, prefix masking, bf16 |
 | Demo quantization | bitsandbytes NF4 (4-bit) | HF Spaces T4 demo |
-| Data | nuScenes v1.0-trainval | rare-hazard filtered, GT-projected boxes |
+| Data | nuScenes v1.0-trainval | rare-hazard filtered, GT-projected boxes (v2/v3 base set)¹ |
 | Distributed ETL | PySpark | 6-signal rarity scoring + analytics (explicit schemas, no inferSchema) |
-| Annotation | Anthropic Claude | describe-only (severity/reasoning/action) |
+| Annotation | Anthropic Claude | describe-only (severity/reasoning/action) for v2/v3; FM-emitted `bbox_2d` for v4's targeted-mining addition¹ |
 | Tracking | Weights & Biases | training metrics |
 | Lint / format | Ruff + Black | line-length = 100 |
 | Testing | pytest | CPU-only, mock-backed |
+
+¹ v4 was blocked by the regression gate and never promoted — see [the label-provenance
+confound](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment).
 
 ---
 

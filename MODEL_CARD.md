@@ -21,8 +21,13 @@ pipeline_tag: image-text-to-text
 DriveSense-VLM detects and explains rare, safety-critical hazards in autonomous-driving dashcam
 frames, emitting structured JSON: a per-hazard bounding box, a 7-class hazard label, severity,
 chain-of-thought reasoning, and a recommended ego-vehicle action. Bounding-box labels are
-**projected from nuScenes 3-D ground truth**; a foundation model writes only the
-severity/reasoning/action text for each real box.
+**projected from nuScenes 3-D ground truth** for the v2/v3 base set (the production model,
+100% GT-projected) — a foundation model writes only the severity/reasoning/action text for
+each real box. v4's targeted-mining addition (1,442 of its 8,670 train examples, 16.6%) is
+the one exception: those boxes are foundation-model-emitted, not GT-projected — see the
+[label-provenance
+confound](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment). v4 was
+blocked by the regression gate and never promoted.
 
 > **Status: research / offline-evaluation only.** Grounding accuracy is low (see Results). This
 > model is a debugging-and-rebuild case study, not a deployable detector.
@@ -128,6 +133,11 @@ ground-truth annotations** into the 2-D camera frame (near-plane frustum clipped
 model (Claude) writes only severity/reasoning/action per real box — it never draws boxes. A hard
 validation gate blocks the label set from training on any sign of collapse (repeated boxes,
 oversized boxes, cross-frame duplication, schema violations).
+
+This describes the production model (v3), which is 100% GT-projected. The blocked v4
+candidate mixed in 1,442 frames where Claude draws the box directly (targeted mining,
+clamped/repaired but not GT-verified) — see the [label-provenance
+confound](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment).
 
 **SFT format**: Qwen2.5-VL chat-format JSONL; one example per frame; the assistant turn is the
 structured-JSON hazard list, supervised via prefix-masked labels.

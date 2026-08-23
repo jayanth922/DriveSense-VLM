@@ -70,6 +70,11 @@ moves are model-side (input resolution, tiny-box loss weighting, a detection-spe
 and label-convention consistency. The flywheel *loop* is the deliverable; the honest negative
 is the finding, and the regression gate is what catches it before promotion.
 
+*Note: the v4 addition also carries a label-provenance confound (FM-emitted boxes on the
+mined frames vs. GT-projected boxes everywhere else) that isn't isolated from the targeting
+effect above — see [FLYWHEEL_V4_FINDINGS.md § Label-provenance confound in the v4
+experiment](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment).*
+
 ---
 
 ## What makes these "senior" findings

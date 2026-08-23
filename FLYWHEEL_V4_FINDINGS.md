@@ -126,7 +126,40 @@ verdict above follows directly from the measured metrics.)
 - The regression is a *modest* few-point move on small-n adverse buckets (rain n=337,
   night+tiny n=308); directionally clear, but not a dramatic collapse.
 - The `no_hazard` cap (15%) and the FM-vs-GT label-convention gap are confounds not yet
-  isolated.
+  isolated (expanded below).
+
+## Label-provenance confound in the v4 experiment
+
+The v4 targeted addition is not a clean "more data" delta over v3: the 1,442 mined frames
+carry **foundation-model-emitted `bbox_2d`** (Claude Sonnet 5, prompted directly on the
+image; boxes clamped/repaired via `repair_box()` but never GT-verified — see
+`scripts/v4/v4_batch_label.py`), while the v3 baseline — including the 7,228 v3 frames v4
+inherits — carries **nuScenes GT-projected boxes** (`source_boxes_for_frame()`,
+`src/drivesense/data/box_sourcing.py`). The mined frames are, by construction, the hardest
+to localize (tiny/distant/rain/night) — exactly where FM box-drawing is least reliable. So
+the regression on the rain/night/tiny buckets confounds two changes at once: the
+targeting/quantity of the added data **and** a shift in label provenance/quality on it. It
+cannot be cleanly attributed to "targeted data hurt."
+
+**Why v4 used FM-emitted boxes instead of GT-projection:** checked against the code, this
+is not a taxonomy limitation. The same hazard classes v4 mines for (`jaywalking`,
+`occluded_pedestrian`, `cyclist_proximity`, `construction_zone`, `unusual_object`) already
+have a GT-category mapping in `box_sourcing.nuscenes_category_to_hazard()` — the identical
+function v2/v3 uses — and `build_v4_manifest.py` retains the nuScenes `sample_data` token
+(as `frame_id`) needed to call `source_boxes_for_frame()` on these exact frames.
+`v4_batch_label.py` simply never calls it: it's a standalone experiment script that reuses
+only the prompt/validator/formatter infra from `annotation.py`, not the box-sourcing path.
+The gap is a pipeline/scope choice for the v4 turn, not a structural one — a GT-projected
+variant of the same 1,442 frames is buildable without new data collection.
+
+**Clean follow-up:**
+1. Measure FM-box IoU vs. GT on the addition, for frames where a matching nuScenes 3D
+   annotation exists and survives `box_sourcing`'s normal quality filters (min side, max
+   area fraction, edge rejection — the same filters v2/v3 apply, so not every mined frame
+   will have a surviving GT box).
+2. Where it does, call `source_boxes_for_frame()` against the v4 manifest's existing
+   `sample_data` tokens to produce a GT-projected variant of the same frames, and retrain
+   against that to isolate the targeting effect from label-provenance noise.
 
 ## Suggested next steps (in priority order)
 
