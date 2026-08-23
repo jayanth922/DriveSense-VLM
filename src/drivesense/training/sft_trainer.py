@@ -1,6 +1,6 @@
 """LoRA SFT training for DriveSense-VLM.
 
-Fine-tunes Qwen3-VL-2B-Instruct with LoRA adapters on the annotated
+Fine-tunes Qwen2.5-VL-3B-Instruct with LoRA adapters on the annotated
 DriveSense dataset for autonomous vehicle hazard detection.
 
 Phase 2a implementation.
@@ -84,15 +84,15 @@ logger = logging.getLogger(__name__)
 
 
 class DriveSenseSFTDataset:
-    """Training dataset for Qwen3-VL SFT on DriveSense JSONL data.
+    """Training dataset for Qwen2.5-VL SFT on DriveSense JSONL data.
 
-    Loads SFT JSONL produced by Phase 1c, applies the Qwen3-VL chat template,
+    Loads SFT JSONL produced by Phase 1c, applies the Qwen2.5-VL chat template,
     processes images, and creates label tensors with non-assistant tokens masked
     to -100 so the loss is computed only on the structured JSON response.
 
     Args:
         jsonl_path: Path to ``sft_train.jsonl`` or ``sft_val.jsonl``.
-        processor: Qwen3-VL ``AutoProcessor`` instance.
+        processor: Qwen2.5-VL ``AutoProcessor`` instance.
         max_seq_length: Sequences longer than this are truncated.
     """
 
@@ -122,7 +122,7 @@ class DriveSenseSFTDataset:
     def __getitem__(self, idx: int) -> dict:
         """Process one training example into model-ready tensors.
 
-        Applies the Qwen3-VL chat template, processes images, tokenizes, and
+        Applies the Qwen2.5-VL chat template, processes images, tokenizes, and
         masks non-assistant tokens in the labels tensor.
 
         Args:
@@ -206,15 +206,15 @@ class DriveSenseSFTDataset:
 
 
 class DriveSenseDataCollator:
-    """Collator for variable-length multimodal Qwen3-VL sequences.
+    """Collator for variable-length multimodal Qwen2.5-VL sequences.
 
     Pads ``input_ids``, ``attention_mask``, and ``labels`` to the maximum
     length in the batch.  Concatenates ``pixel_values`` along the patch
-    dimension and stacks ``image_grid_thw`` — because Qwen3-VL dynamically
+    dimension and stacks ``image_grid_thw`` — because Qwen2.5-VL dynamically
     tiles images into variable patch counts that cannot be naively stacked.
 
     Args:
-        processor: Qwen3-VL processor (supplies ``pad_token_id``).
+        processor: Qwen2.5-VL processor (supplies ``pad_token_id``).
         max_seq_length: Hard upper bound; sequences longer than this are truncated.
     """
 
@@ -267,7 +267,7 @@ class DriveSenseDataCollator:
 def _collate_pixel_values(features: list[dict], batch: dict) -> None:
     """Concatenate pixel_values and image_grid_thw across the batch.
 
-    Qwen3-VL produces a variable number of image patches per image; they
+    Qwen2.5-VL produces a variable number of image patches per image; they
     cannot be stacked and must be concatenated along the patch dimension.
 
     Args:
@@ -288,7 +288,7 @@ def _collate_pixel_values(features: list[dict], batch: dict) -> None:
 
 
 def _normalize_image_paths(messages: list[dict]) -> list[dict]:
-    """Ensure image paths in messages use ``file://`` prefix for Qwen3-VL.
+    """Ensure image paths in messages use ``file://`` prefix for Qwen2.5-VL.
 
     Args:
         messages: List of chat message dicts.
@@ -361,7 +361,7 @@ def _extract_images_fallback(messages: list[dict]) -> list[PILImage.Image]:
 
 
 def setup_model_and_processor(config: dict) -> tuple:
-    """Load Qwen3-VL model and processor and apply LoRA adapters.
+    """Load Qwen2.5-VL model and processor and apply LoRA adapters.
 
     Selects ``flash_attention_2`` if ``flash_attn`` is installed, otherwise
     falls back to ``sdpa``.  Enables gradient checkpointing with
@@ -522,8 +522,8 @@ def setup_trainer(
     """Create a HuggingFace Trainer with the custom DriveSense data collator.
 
     Args:
-        model: PEFT-wrapped Qwen3-VL model.
-        processor: Qwen3-VL processor (used for padding token).
+        model: PEFT-wrapped Qwen2.5-VL model.
+        processor: Qwen2.5-VL processor (used for padding token).
         train_dataset: Training dataset.
         val_dataset: Validation dataset.
         training_args: ``TrainingArguments`` instance.
@@ -555,7 +555,7 @@ def setup_trainer(
 def train(config_path: str | Path, resume_override: str | None = None) -> dict:
     """Main SFT training entry point.
 
-    Loads all configs, builds the Qwen3-VL model with LoRA, trains, evaluates,
+    Loads all configs, builds the Qwen2.5-VL model with LoRA, trains, evaluates,
     saves the LoRA adapter, and returns training metrics.
 
     Args:

@@ -179,7 +179,7 @@ class SamplePredictionCallback(TrainerCallback):  # type: ignore[misc]
     can watch the model improve qualitatively during training.
 
     Args:
-        processor: Qwen3-VL processor for decoding generated tokens.
+        processor: Qwen2.5-VL processor for decoding generated tokens.
         val_dataset: Dataset to draw fixed samples from.
         num_samples: Number of samples to inspect (default 3).
     """

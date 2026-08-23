@@ -1,6 +1,6 @@
 """Stage 2: AWQ 4-bit quantization of the LLM decoder.
 
-Quantizes the language model portion of Qwen3-VL while keeping
+Quantizes the language model portion of Qwen2.5-VL while keeping
 the vision encoder in full precision (fp16/bf16).
 
 AWQ (Activation-aware Weight Quantization) preserves "salient" weight
@@ -85,7 +85,7 @@ _VIT_MODULE_PREFIXES: tuple[str, ...] = (
 
 
 class AWQQuantizer:
-    """AWQ 4-bit quantization pipeline for Qwen3-VL.
+    """AWQ 4-bit quantization pipeline for Qwen2.5-VL.
 
     Key design: Quantizes ONLY the LLM decoder, preserving the vision
     encoder in full precision. This is critical because quantizing the
@@ -639,7 +639,7 @@ def _discover_vision_modules(model: object) -> list[str]:
         logger.warning("Module discovery failed: %s — using defaults", exc)
         excluded = ["visual"]
     if not excluded:
-        excluded = ["visual"]  # Qwen3-VL default
+        excluded = ["visual"]  # Qwen2.5-VL default
     return excluded
 
 

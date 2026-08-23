@@ -1,6 +1,6 @@
 """DriveSense-VLM: SFT-optimized vision-language model for AV rare hazard detection.
 
-Built on Qwen3-VL-2B-Instruct with LoRA fine-tuning, trained on nuScenes and DADA-2000.
+Built on Qwen2.5-VL-3B-Instruct with LoRA fine-tuning, trained on nuScenes and DADA-2000.
 Outputs structured JSON with bounding boxes, hazard class, severity, reasoning, and action.
 """
 

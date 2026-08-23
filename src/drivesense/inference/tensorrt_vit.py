@@ -1,4 +1,4 @@
-"""Stage 3: TensorRT compilation of Qwen3-VL vision encoder.
+"""Stage 3: TensorRT compilation of Qwen2.5-VL vision encoder.
 
 Compiles the ViT to a TensorRT engine with fixed input resolution (672x448)
 for deterministic, low-latency visual feature extraction.
@@ -81,14 +81,14 @@ _DEFAULT_INPUT_SHAPE: tuple[int, int, int, int] = (1, 3, 448, 672)
 
 
 class _ViTWrapper(_nn.Module if _nn is not None else object):  # type: ignore[misc]
-    """Wrap Qwen3-VL visual encoder for ONNX export at fixed resolution.
+    """Wrap Qwen2.5-VL visual encoder for ONNX export at fixed resolution.
 
     Accepts a standard [B, C, H, W] image tensor. Internally converts to
-    the patch-sequence format expected by Qwen3-VL's ViT and returns the
+    the patch-sequence format expected by Qwen2.5-VL's ViT and returns the
     visual embedding sequence.
 
     Args:
-        vit:      The visual encoder module from Qwen3-VL.
+        vit:      The visual encoder module from Qwen2.5-VL.
         grid_thw: Fixed grid [1, n_height_patches, n_width_patches].
     """
 
@@ -118,7 +118,7 @@ class _ViTWrapper(_nn.Module if _nn is not None else object):  # type: ignore[mi
 
 
 class ViTExtractor:
-    """Extract, compile, and benchmark the Qwen3-VL vision encoder.
+    """Extract, compile, and benchmark the Qwen2.5-VL vision encoder.
 
     Full pipeline:
     1. Extract ViT submodule from full model
@@ -148,7 +148,7 @@ class ViTExtractor:
     # ── extraction ──────────────────────────────────────────────────────────
 
     def extract_vit(self, model_dir: Path) -> tuple[Any, Any]:
-        """Extract the vision encoder submodule from Qwen3-VL.
+        """Extract the vision encoder submodule from Qwen2.5-VL.
 
         Args:
             model_dir: Path to merged model directory.
@@ -540,7 +540,7 @@ def _require_torch_transformers() -> None:
 
 
 def _get_vision_encoder(model: Any) -> Any:
-    """Return the ViT submodule from Qwen2.5-VL / Qwen3-VL.
+    """Return the ViT submodule from Qwen2.5-VL.
 
     Checks direct attributes (vision_tower, visual, vision_model), then
     attributes nested under model.model (LLaVA-style wrappers), then scans
@@ -572,9 +572,9 @@ def _get_vision_encoder(model: Any) -> Any:
 
 
 def _compute_grid_thw(input_shape: tuple[int, int, int, int]) -> Any:
-    """Compute Qwen3-VL grid_thw tensor for a fixed input resolution.
+    """Compute Qwen2.5-VL grid_thw tensor for a fixed input resolution.
 
-    Qwen3-VL uses 28×28 patches. For a 672×448 image:
+    Qwen2.5-VL uses 28×28 patches. For a 672×448 image:
     height_patches = 448 / 28 = 16, width_patches = 672 / 28 = 24.
 
     Args:

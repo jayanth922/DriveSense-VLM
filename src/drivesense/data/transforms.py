@@ -183,7 +183,7 @@ def normalize_bbox_to_1000(
 ) -> list[int]:
     """Convert pixel-coordinate bounding box to Qwen-VL's [0, 1000] grounding range.
 
-    Qwen3-VL uses normalised integer coordinates in the range [0, 1000] for
+    Qwen2.5-VL uses normalised integer coordinates in the range [0, 1000] for
     its grounding output format — both in prompts and predicted text.
 
     Args:

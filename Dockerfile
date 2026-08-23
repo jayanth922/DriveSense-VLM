@@ -28,7 +28,6 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends git \
 # Core runtime deps (data + eval + MLOps). Training/inference extras are opt-in to keep the
 # CPU image small; install them in the GPU variant:
 #   pip install "transformers<5" peft accelerate bitsandbytes qwen-vl-utils torch
-COPY requirements-pipeline.txt* ./
 RUN pip install --no-cache-dir \
       pyyaml pillow tqdm numpy requests scipy ijson anthropic
 

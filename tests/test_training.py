@@ -1,6 +1,6 @@
 """Tests for Phase 2a: LoRA SFT training pipeline.
 
-All tests run on CPU-only macOS.  The actual Qwen3-VL model is never loaded;
+All tests run on CPU-only macOS.  The actual Qwen2.5-VL model is never loaded;
 model, processor, and GPU operations are fully mocked.
 """
 
@@ -32,7 +32,7 @@ from drivesense.utils.config import load_config, merge_configs  # noqa: E402
 
 
 class MockProcessor:
-    """Minimal Qwen3-VL processor mock for CPU tests."""
+    """Minimal Qwen2.5-VL processor mock for CPU tests."""
 
     class _Tok:
         pad_token_id = 0

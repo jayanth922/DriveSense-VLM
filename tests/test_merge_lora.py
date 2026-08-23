@@ -27,7 +27,7 @@ def merge_config() -> dict:
     """Minimal config for LoRAMerger."""
     return {
         "model": {
-            "name": "Qwen/Qwen3-VL-2B-Instruct",
+            "name": "Qwen/Qwen2.5-VL-3B-Instruct",
             "revision": "main",
             "torch_dtype": "bfloat16",
         },
@@ -70,7 +70,7 @@ def mock_adapter_dir(tmp_path: Path) -> Path:
     adapter_dir.mkdir()
     (adapter_dir / "adapter_config.json").write_text(
         json.dumps({
-            "base_model_name_or_path": "Qwen/Qwen3-VL-2B-Instruct",
+            "base_model_name_or_path": "Qwen/Qwen2.5-VL-3B-Instruct",
             "r": 32,
             "lora_alpha": 64,
             "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -93,7 +93,7 @@ class TestMergeConfigLoading:
     def test_model_name_from_config(self, merge_config: dict) -> None:
         from drivesense.inference.merge_lora import LoRAMerger
         merger = LoRAMerger(merge_config)
-        assert merger._model_name == "Qwen/Qwen3-VL-2B-Instruct"
+        assert merger._model_name == "Qwen/Qwen2.5-VL-3B-Instruct"
 
     def test_output_dir_from_config(self, merge_config: dict) -> None:
         from drivesense.inference.merge_lora import LoRAMerger
@@ -118,7 +118,7 @@ class TestMergeConfigLoading:
     def test_custom_output_dir(self) -> None:
         from drivesense.inference.merge_lora import LoRAMerger
         cfg = {
-            "model": {"name": "Qwen/Qwen3-VL-2B-Instruct"},
+            "model": {"name": "Qwen/Qwen2.5-VL-3B-Instruct"},
             "merge": {"output_dir": "/custom/path", "safe_serialization": False},
         }
         merger = LoRAMerger(cfg)

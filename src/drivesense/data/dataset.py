@@ -5,7 +5,7 @@ pipeline (Parquet or JSONL) and the DADA-2000 extraction pipeline (JSONL),
 merges them into a unified frame list, assigns train/val/test splits using
 stratified sampling, and exposes a PyTorch-compatible Dataset.
 
-The conversation format follows Qwen3-VL-2B chat template:
+The conversation format follows Qwen2.5-VL-3B chat template:
     System: "You are a hazard detection assistant for autonomous vehicles..."
     User:   [Image] "Describe any hazards visible in this dashcam frame..."
     Assistant: (structured JSON response)
@@ -392,13 +392,13 @@ class DriveSenseDataset(TorchDataset):  # type: ignore[misc]
 
     Loads a per-split ``*_manifest.jsonl`` file produced by
     :class:`UnifiedDatasetBuilder` and returns processed training examples
-    ready for the Qwen3-VL processor.
+    ready for the Qwen2.5-VL processor.
 
     Args:
         manifest_path: Path to the ``*_manifest.jsonl`` file for this split.
         split: One of ``"train"``, ``"val"``, or ``"test"``.
         config: Data config dict loaded from ``configs/data.yaml``.
-        processor: Qwen3-VL processor instance (optional; can be set post-init).
+        processor: Qwen2.5-VL processor instance (optional; can be set post-init).
     """
 
     def __init__(
@@ -482,7 +482,7 @@ class DriveSenseDataset(TorchDataset):  # type: ignore[misc]
             return None
 
     def _format_prompt(self) -> str:
-        """Build the system+user prompt string for Qwen3-VL.
+        """Build the system+user prompt string for Qwen2.5-VL.
 
         Returns:
             Multi-turn prompt string.

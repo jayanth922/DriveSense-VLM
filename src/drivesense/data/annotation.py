@@ -859,10 +859,10 @@ class LLMAnnotationPipeline:
 
 
 class SFTDataFormatter:
-    """Formats annotated frames into Qwen3-VL chat-format SFT training examples.
+    """Formats annotated frames into Qwen2.5-VL chat-format SFT training examples.
 
     Produces JSONL files where each line is a training example with the
-    exact message format that Qwen3-VL's chat template expects.
+    exact message format that Qwen2.5-VL's chat template expects.
 
     Args:
         config: Optional data config dict for prompt customisation.

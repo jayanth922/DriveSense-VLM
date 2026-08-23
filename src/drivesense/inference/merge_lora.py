@@ -1,4 +1,4 @@
-"""Stage 1: Merge LoRA adapters into base Qwen3-VL model.
+"""Stage 1: Merge LoRA adapters into base Qwen2.5-VL model.
 
 Produces a full-weight model ready for quantization or direct inference.
 The merge must happen BEFORE quantization — merging after quantization
@@ -61,7 +61,7 @@ except ImportError:
 
 
 class LoRAMerger:
-    """Merges trained LoRA adapters into the base Qwen3-VL model.
+    """Merges trained LoRA adapters into the base Qwen2.5-VL model.
 
     Pipeline:
     1. Load base model in bfloat16
@@ -350,7 +350,7 @@ def _count_params_from_config(model_dir: Path) -> int:
         return 0
     with contextlib.suppress(Exception):
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        # Qwen3-VL reports num_parameters in config if saved by transformers
+        # Qwen2.5-VL reports num_parameters in config if saved by transformers
         if "num_parameters" in cfg:
             return int(cfg["num_parameters"])
         # Fallback: rough estimate from hidden_size + num_layers
