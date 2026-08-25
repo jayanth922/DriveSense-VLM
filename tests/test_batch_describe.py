@@ -22,10 +22,16 @@ from drivesense.data import batch_describe as bd
 
 
 def _ok_result(cid: str, text: str) -> SimpleNamespace:
+    # Current Sonnet models lead with a thinking block, so the text block is
+    # not necessarily content[0] — mirror that here rather than assume it is.
+    content = [
+        SimpleNamespace(type="thinking", thinking="..."),
+        SimpleNamespace(type="text", text=text),
+    ]
     return SimpleNamespace(
         custom_id=cid,
         result=SimpleNamespace(type="succeeded",
-                               message=SimpleNamespace(content=[SimpleNamespace(text=text)])))
+                               message=SimpleNamespace(content=content)))
 
 
 def _err_result(cid: str) -> SimpleNamespace:

@@ -175,11 +175,7 @@ for module_name, callable_name in EXISTENCE_CHECKS:
 readme_path = PROJECT_ROOT / "README.md"
 try:
     readme_text = readme_path.read_text(encoding="utf-8")
-    has_results_table = (
-        "| Metric" in readme_text
-        or "Detection Rate" in readme_text
-        or "Key Results" in readme_text
-    )
+    has_results_table = "## Results" in readme_text and "|---|" in readme_text
     check("README has results table", has_results_table, "" if has_results_table else "No results table found")
 except FileNotFoundError:
     check("README has results table", False, "README.md not found")

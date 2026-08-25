@@ -1,0 +1,80 @@
+# =============================================================================
+# Task 3 de-confound — H100 training config (per-arm)
+# =============================================================================
+# Same faithful recipe as configs/training.yaml (LoRA r32/a64 from model.yaml,
+# lr 2e-5 cosine, 3 epochs, EFFECTIVE BATCH 16) but retuned for a single H100
+# 80GB: per_device_train_batch_size=8 with gradient_accumulation_steps=2 (same
+# effective batch of 16) — pdb=16 with no accumulation OOMs the vision encoder,
+# see the note below.
+#
+# run_training.py loads model.yaml + data.yaml FROM THIS FILE'S DIRECTORY, so the
+# sibling deconfound/model.yaml and deconfound/data.yaml are used. Point it at an
+# arm via env vars (expanded by utils/config.py):
+#
+#   SFT_DIR   -> deconfound/data.yaml annotation.sft_output_dir (which arm to train)
+#   OUT_DIR   -> training.output_dir (where the LoRA adapter lands)
+#   ATTN_IMPL -> model.yaml attn_implementation (sdpa default; flash_attention_2 if built)
+#
+#   SFT_DIR=/workspace/deconfound_work/arm_fm OUT_DIR=/workspace/deconfound_work/out_fm \
+#     python scripts/run_training.py --config deconfound/training_h100.yaml
+#   SFT_DIR=/workspace/deconfound_work/arm_gt OUT_DIR=/workspace/deconfound_work/out_gt \
+#     python scripts/run_training.py --config deconfound/training_h100.yaml
+# =============================================================================
+
+training:
+  output_dir: "${OUT_DIR:/workspace/deconfound_work/out_fm}"
+
+  # --- Epochs & Batch Size (effective batch = 16 * 1 = 16, matches faithful recipe) ---
+  num_epochs: 3
+  per_device_train_batch_size: 8      # pdb16 OOMs the vision encoder on 80GB; 8 is the tested value.
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 2      # effective batch = 8 * 2 = 16 (unchanged)
+
+  # --- Optimizer (unchanged from the faithful recipe) ---
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  lr_scheduler_type: "cosine"
+
+  # --- Sequence Length ---
+  max_seq_length: 2048
+
+  # --- Precision & memory (H100 speed levers) ---
+  bf16: true
+  tf32: true                          # H100 TF32 matmuls (also set torch backend flags, see RUNBOOK)
+  gradient_checkpointing: true        # ON: needed to fit; big activation-memory saver
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+
+  # --- Checkpointing ---
+  save_strategy: "epoch"
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+
+  # --- Logging & Evaluation ---
+  logging_steps: 10
+  eval_strategy: "epoch"
+  report_to: "none"
+
+  resume_from_checkpoint: null
+
+  debug:
+    max_steps: 10
+    eval_steps: 5
+    logging_steps: 1
+    num_epochs: 1
+    save_strategy: "no"
+
+wandb:
+  project: "drivesense-vlm"
+  entity: null
+  tags:
+    - "qwen2.5-vl-3b"
+    - "lora-sft"
+    - "deconfound"
+  notes: "Task 3 de-confound: FM-vs-GT box provenance, identical base/val/test."
+
+early_stopping:
+  patience: 2
+  threshold: 0.001

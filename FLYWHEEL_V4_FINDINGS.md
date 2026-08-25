@@ -161,6 +161,12 @@ variant of the same 1,442 frames is buildable without new data collection.
    `sample_data` tokens to produce a GT-projected variant of the same frames, and retrain
    against that to isolate the targeting effect from label-provenance noise.
 
+**Update:** this follow-up has been run as Task 3 — see [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).
+A controlled FM-vs-GT A/B (identical base/val/test and targeted frame ids, box provenance the
+only variable) found GT-projected boxes ahead on every axis, with the FM arm detecting nothing
+at all at night or in rain. Box provenance, not just targeting, was a real driver of the
+regression above.
+
 ## Suggested next steps (in priority order)
 
 The canonical, repo-wide list lives in the README's
