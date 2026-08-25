@@ -45,20 +45,6 @@ _NUSCENES_RECORD = {
     "annotations": [{"category": "pedestrian", "token": "ann_001"}],
 }
 
-_DADA_RECORD = {
-    "frame_id": "dada_cat01_seq001_frame0003_critical",
-    "source": "dada2000",
-    "image_path": "/fake/path/dada_001.png",
-    "description": "Pedestrian crossing accident",
-    "weather": "clear",
-    "time_of_day": "day",
-    "road_type": "urban",
-    "category": "001",
-    "sequence": "001",
-    "frame_index": 3,
-    "frame_type": "critical",
-}
-
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -130,28 +116,6 @@ class TestUnifiedDatasetBuilderLoad:
         builder = UnifiedDatasetBuilder(_BASE_CONFIG)
         builder.load_nuscenes_frames(tmp_path)
         assert builder._frames[0]["source"] == "nuscenes"
-
-    def test_load_dada_from_jsonl(self, tmp_path: Path) -> None:
-        dada_dir = tmp_path / "dada"
-        _write_jsonl(dada_dir / "metadata.jsonl", [_DADA_RECORD] * 3)
-        builder = UnifiedDatasetBuilder(_BASE_CONFIG)
-        n = builder.load_dada2000_frames(dada_dir)
-        assert n == 3
-        assert builder._frames[0]["source"] == "dada2000"
-
-    def test_load_missing_dada_returns_zero(self, tmp_path: Path) -> None:
-        builder = UnifiedDatasetBuilder(_BASE_CONFIG)
-        n = builder.load_dada2000_frames(tmp_path / "empty")
-        assert n == 0
-
-    def test_combined_load(self, tmp_path: Path) -> None:
-        _write_jsonl(tmp_path / "metadata.jsonl", [_NUSCENES_RECORD] * 4)
-        dada_dir = tmp_path / "dada"
-        _write_jsonl(dada_dir / "metadata.jsonl", [_DADA_RECORD] * 6)
-        builder = UnifiedDatasetBuilder(_BASE_CONFIG)
-        builder.load_nuscenes_frames(tmp_path)
-        builder.load_dada2000_frames(dada_dir)
-        assert len(builder._frames) == 10
 
 
 # ---------------------------------------------------------------------------

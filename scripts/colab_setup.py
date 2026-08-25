@@ -209,7 +209,6 @@ def _create_drive_dirs(drive_root: str) -> None:
     dirs = [
         "",
         "data/nuscenes",
-        "data/dada2000",
         "outputs/data",
         "outputs/training",
         "outputs/merged_model",

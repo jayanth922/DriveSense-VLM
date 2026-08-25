@@ -49,7 +49,6 @@ MODULES_TO_CHECK = [
     "drivesense",
     "drivesense.data",
     "drivesense.data.nuscenes_loader",
-    "drivesense.data.dada_loader",
     "drivesense.data.annotation",
     "drivesense.data.dataset",
     "drivesense.data.transforms",
@@ -147,9 +146,8 @@ for rel_path in EXPECTED_PATHS:
 
 EXISTENCE_CHECKS: list[tuple[str, str]] = [
     ("drivesense.data.nuscenes_loader", "NuScenesRarityFilter"),
-    ("drivesense.data.dada_loader", "DADA2000Loader"),
     ("drivesense.data.annotation", "LLMAnnotationPipeline"),
-    ("drivesense.data.dataset", "DriveSenseDataset"),
+    ("drivesense.data.dataset", "UnifiedDatasetBuilder"),
     ("drivesense.training.sft_trainer", "train"),
     ("drivesense.eval.grounding", "compute_iou"),
     ("drivesense.eval.production", "ProductionEvaluator"),

@@ -1,9 +1,10 @@
-"""Unified SFT dataset combining nuScenes rare frames and DADA-2000 accident frames.
+"""Unified SFT dataset built from nuScenes rare frames.
 
 Implements Phase 1b: reads frame manifests produced by the nuScenes rarity
-pipeline (Parquet or JSONL) and the DADA-2000 extraction pipeline (JSONL),
-merges them into a unified frame list, assigns train/val/test splits using
-stratified sampling, and exposes a PyTorch-compatible Dataset.
+pipeline (Parquet or JSONL), assigns train/val/test splits using stratified
+sampling, and exposes a PyTorch-compatible Dataset. Originally built to merge
+in a second source (DADA-2000); that loader was scaffolding never used past
+Phase 1 and has been removed — this file is nuScenes-only.
 
 The conversation format follows Qwen2.5-VL-3B chat template:
     System: "You are a hazard detection assistant for autonomous vehicles..."
@@ -106,15 +107,12 @@ def _load_parquet(path: Path) -> list[dict]:
 
 
 class UnifiedDatasetBuilder:
-    """Merge nuScenes and DADA-2000 manifests into a single split manifest.
+    """Build a split manifest from nuScenes frame records.
 
-    Reads frame records from:
-    - ``nuscenes_dir/rare_frames/`` (Parquet) or ``nuscenes_dir/metadata.jsonl``
-    - ``dada_dir/metadata.jsonl``
-
-    Normalises each record to the unified schema, assigns train/val/test splits
-    stratified by ``source+category``, and writes a ``manifest.jsonl`` per split
-    under ``output_dir/``.
+    Reads frame records from ``nuscenes_dir/rare_frames/`` (Parquet) or
+    ``nuscenes_dir/metadata.jsonl``, normalises each record to the unified
+    schema, assigns train/val/test splits stratified by ``source+category``,
+    and writes a ``manifest.jsonl`` per split under ``output_dir/``.
 
     Args:
         config: Data config dict loaded from ``configs/data.yaml``.
@@ -189,54 +187,6 @@ class UnifiedDatasetBuilder:
                 "camera": rec.get("camera", "CAM_FRONT"),
             },
             "annotations": annotations,
-            "split": "",
-        }
-
-    def load_dada2000_frames(self, dada_dir: Path) -> int:
-        """Load extracted DADA-2000 frames from a metadata JSONL file.
-
-        Args:
-            dada_dir: Directory containing ``metadata.jsonl`` written by
-                :meth:`DADA2000Loader.export_keyframes`.
-
-        Returns:
-            Number of frames loaded.
-        """
-        jsonl_path = Path(dada_dir) / "metadata.jsonl"
-        raw = _load_jsonl(jsonl_path)
-        if not raw:
-            logger.warning("No DADA-2000 frames found in %s", dada_dir)
-            return 0
-        logger.info("Loaded %d DADA-2000 frames from %s", len(raw), jsonl_path)
-        for rec in raw:
-            self._frames.append(self._normalise_dada_record(rec))
-        return len(raw)
-
-    def _normalise_dada_record(self, rec: dict) -> dict:
-        """Normalise a DADA-2000 JSONL record to the unified schema.
-
-        Args:
-            rec: Raw record dict from the DADA-2000 extraction pipeline.
-
-        Returns:
-            Unified frame record dict.
-        """
-        return {
-            "frame_id": rec.get("frame_id", ""),
-            "source": "dada2000",
-            "image_path": str(rec.get("image_path", "")),
-            "scene_description": rec.get("description", ""),
-            "weather": rec.get("weather", "clear"),
-            "time_of_day": rec.get("time_of_day", "day"),
-            "road_type": rec.get("road_type", "urban"),
-            "category": rec.get("category", "001"),
-            "rarity_score": 0,
-            "source_metadata": {
-                "sequence": rec.get("sequence", ""),
-                "frame_index": rec.get("frame_index", 0),
-                "frame_type": rec.get("frame_type", "critical"),
-            },
-            "annotations": [],
             "split": "",
         }
 

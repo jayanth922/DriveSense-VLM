@@ -2,7 +2,7 @@
 # DriveSense-VLM Data Configuration
 # =============================================================================
 # Dataset paths, split ratios, rarity filtering thresholds, annotation settings.
-# Phase 1a (nuScenes), 1b (DADA-2000), and 1c (Annotation) read from this file.
+# Phase 1a (nuScenes) and 1c (Annotation) read from this file.
 # Paths use ${VAR:default} syntax — expanded by utils/config.py at load time.
 # =============================================================================
 
@@ -13,7 +13,6 @@
 # -----------------------------------------------------------------------------
 paths:
   nuscenes_root: "${HPC_DATA_ROOT:~/data}/nuscenes"
-  dada2000_root: "${HPC_DATA_ROOT:~/data}/dada2000"
   output_dir: "outputs/data"
   cache_dir: ".cache/drivesense"
 
@@ -55,25 +54,12 @@ nuscenes:
     min_rarity_score: 3                 # Minimum composite score (0–6) to include frame
 
 # -----------------------------------------------------------------------------
-# DADA-2000 — Accident Frame Extraction (Phase 1b)
-# -----------------------------------------------------------------------------
-dada2000:
-  frame_extraction:
-    method: "critical_moment"           # Extract frame at annotated accident timestamp
-    additional_context_frames: 2        # Also extract 2 frames before and after critical moment
-  max_frames: 200                       # Cap at 200 frames total from DADA-2000
-  annotation_file: "dada_text_annotations.xlsx"  # Optional; relative to dada2000_root
-  # DADA-2000 has 54 accident categories. Categories are zero-padded 3-digit strings.
-  num_categories: 54
-
-# -----------------------------------------------------------------------------
-# Unified Dataset — Merged nuScenes + DADA-2000 (Phase 1b)
+# Unified Dataset — nuScenes split manifest (Phase 1b)
+# Originally also merged a DADA-2000 source; that loader was scaffolding never
+# used past Phase 1 and has been removed, so this is nuScenes-only.
 # -----------------------------------------------------------------------------
 unified:
   output_dir: "outputs/data/unified"   # Directory for per-split manifest.jsonl files
-  # Frame sources included in unified dataset (all enabled by default)
-  include_nuscenes: true
-  include_dada2000: true
 
 # -----------------------------------------------------------------------------
 # Annotation — LLM Counterfactual Generation (Phase 1c)

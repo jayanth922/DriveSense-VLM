@@ -230,7 +230,7 @@ and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specif
 | `scripts/` | Pipeline CLIs: filter, annotate, train, evaluate, mine, gate, ship |
 | `src/drivesense/` | Library: `data/`, `training/`, `eval/`, `inference/`, `monitoring/` |
 | `src/drivesense/data/spark_pipeline.py` | Distributed PySpark rarity-scoring + analytics ETL |
-| `docs/` | Deep dives: observability, closed-loop mining, AV2 integration, TensorRT runbook |
+| `docs/` | Deep dives: observability, closed-loop mining, TensorRT runbook |
 | `configs/*.yaml` | All hyperparameters and paths — never hardcoded in source |
 | `tests/` | CPU-only, mock-backed test suite — no GPU, downloads, or API keys |
 | `demo/` | Gradio app for HuggingFace Spaces (T4, NF4) |

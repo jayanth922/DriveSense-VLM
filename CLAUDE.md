@@ -61,10 +61,6 @@ canonical list; do not duplicate it elsewhere).
 - **Mining targets lib**: `src/drivesense/data/mining_targets.py` — proxied_size_tier (distance_to_ego bands, NOT measured), infer_weather/infer_time_of_day (scene_description keywords, mirrors scene_meta()), score_frame, select_targets (drop-in shopping-list schema); `location` dimension is NOT derivable from metadata.jsonl — dropped with a warning
 - **Mining targets CLI**: `scripts/select_mining_targets.py` — takes the stratification report + global metadata.jsonl, writes a new mining_shoppinglist.jsonl targeting the worst bucket; run the miner with `--no-rebuild-list` after, or the implicit-rebuild default overwrites it
 - **Closed-loop docs**: `docs/CLOSED_LOOP.md` — analyze → select → mine → label → gate → train → eval design; honestly notes only the tooling was built/validated this session, not a full extra cycle
-- **AV2 box projection**: `src/drivesense/data/av2_box_projection.py` — Cuboid→2D bbox via AV2's own confirmed `PinholeCamera.project_ego_to_img` (not reimplemented); `cuboid_vertices_in_ego_frame` handles optional city→ego correction; no `av2` import required (duck-typed), fully synthetic-testable
-- **AV2 box sourcing**: `src/drivesense/data/av2_box_sourcing.py` — `AV2_TO_HAZARD_CLASS` taxonomy map (⚠️ best-effort, unverified against source — see docs/AV2_INTEGRATION.md), `av2_category_to_hazard`, `source_boxes_for_av2_frame` (mirrors box_sourcing.py, reuses `box_reject_reason`/`filter_frame_boxes`/`BOX_EXEMPT_LABELS` directly), `taxonomy_coverage`
-- **AV2 loader**: `src/drivesense/data/av2_loader.py` — `AV2LogReader` (log-IO; `list_timestamps`/`get_cuboids`/`get_ego_pose`/`get_image_path` raise `NotImplementedError` — dataloader method names unverified this session); `build_av2_sft_record` reuses `SFTDataFormatter.format_single_example` directly, so merge_sft_v2.py/run_label_validation.py/run_evaluation.py work unchanged on AV2 records (proven by tests, not just asserted) — caller must stamp `scene_token`/`split` before merge_sft_v2.py, matching nuScenes' own convention
-- **AV2 integration docs**: `docs/AV2_INTEGRATION.md` — confirmed-vs-assumed API research log, scoped explicitly as scaffolding pending real data (~1TB, not downloaded this session)
 - **TensorRT runbook**: `docs/TENSORRT_RUNBOOK.md` — Colab A100 execution plan for `tensorrt_vit.py` (already ViT-only scoped, not full-model); no real GPU TensorRT attempt is evidenced in repo history — the only prior "failure" artifact was a test-fixture leak (`tests/test_tensorrt.py::test_torch_compile_sentinel_path` wrote to the real `outputs/tensorrt/` instead of `tmp_path`; fixed). Decision points at each stage; honest fallback framing if ONNX/TRT export fails
 - **Demo requirements**: `demo/requirements.txt` — bitsandbytes, qwen-vl-utils, gradio (T4 NF4 demo)
 - **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
@@ -87,8 +83,8 @@ canonical list; do not duplicate it elsewhere).
 - **Streaming miner**: `src/drivesense/data/streaming_miner.py` — bounded-storage nuScenes blob image fetch (shopping list, stratified sample, streaming tar extract, resume manifest, auth resolution)
 - **Streaming miner CLI**: `scripts/run_streaming_miner.py` — `--dry-run`, `--build-list-only`, `--blob-dir`, `--blob-urls-file`; one blob at a time under a disk cap. Config in `configs/data.yaml` (`mining:`)
 - **Miner outputs**: `outputs/data/mining_shoppinglist.jsonl`, `mining_manifest.json` (resume), `mining_report.json`
-- **Unified dataset**: `src/drivesense/data/dataset.py` — UnifiedDatasetBuilder + DriveSenseDataset
-- **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder
+- **Unified dataset**: `src/drivesense/data/dataset.py` — `UnifiedDatasetBuilder` (nuScenes-only; the DADA-2000 second source was removed) + `DriveSenseDataset`
+- **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder, used by `notebooks/00_data_pipeline.ipynb` and `05_quick_start.ipynb`
 - **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files
 - **Filtering script**: `scripts/run_nuscenes_filter.py` — Phase 1a pipeline CLI
 - **Filtered output**: `outputs/data/nuscenes_filtered/` — images + metadata JSON
@@ -110,10 +106,8 @@ python scripts/run_spark_pipeline.py --version v1.0-mini
 python scripts/run_spark_pipeline.py --skip-extraction        # reuse existing JSONL
 python scripts/run_spark_pipeline.py --analytics-only         # analytics only
 
-
-# Phase 1b: Build unified dataset
+# Phase 1b: Build unified dataset (nuScenes-only)
 python scripts/run_build_unified_dataset.py
-python scripts/run_build_unified_dataset.py --nuscenes-only
 
 # Phase 1c: LLM annotation pipeline
 python scripts/run_annotation_pipeline.py --dry-run --mock-llm   # validate prompts, no API
@@ -204,7 +198,7 @@ black src/
 | 0.5a | Project Scaffolding | ✅ Complete |
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
-| 1b | Critical-moment extraction (legacy, unused in v2) | ✅ Complete |
+| 1b | Unified dataset builder | ✅ Complete, nuScenes-only — the DADA-2000 second source was scaffolding never used past Phase 1 and has been removed |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training on HPC | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
@@ -263,8 +257,11 @@ black src/
 - Spark schemas are always **explicit** (`StructType`) — never use `inferSchema`.
 - `filter_by_threshold()` raises `RuntimeError` if `compute_all_scores()` was not called first.
 - Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
-- `UnifiedDatasetBuilder` (legacy) merged multiple sources into train/val/test splits; the v2 pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
-- `DriveSenseDataset(manifest_path, split, config, processor)` takes the per-split manifest JSONL; `get_collate_fn()` returns `collate_fn` which batches images as a list (not tensored — VLM processor handles padding).
+- The v2+ SFT pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
+  `UnifiedDatasetBuilder` (`dataset.py`, driven by `scripts/run_build_unified_dataset.py`) still
+  builds the Phase-1b nuScenes split manifest used by `00_data_pipeline.ipynb` /
+  `05_quick_start.ipynb`; its DADA-2000 second-source loader (`dada_loader.py`,
+  `run_dada_extraction.py`) was scaffolding never used past Phase 1 and has been removed.
 - `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
 - **Annotation pipeline** (`annotation.py`): `AnnotationPromptBuilder` loads templates from
   `prompts/*.txt` and `counterfactual_scenarios.json`; `AnnotationValidator` validates + fixes

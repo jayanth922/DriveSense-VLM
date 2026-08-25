@@ -89,7 +89,7 @@ the best-performing tier. That set had no weather/time-of-day variety
 > result reverses it: detection **scales with hazard size**, with `tiny` the
 > worst tier (22.8% v3 / 17.2% v4 @0.5) and `medium` the best (52.6%), and rain
 > and night+tiny as the weak conditions. See the
-> [README results](../README.md#results-honest-measured-on-a-fixed-test-set) and
+> [README results](../README.md#results-v2--v3--v4-fixed-test-set) and
 > [`results/metrics_registry.json`](../results/metrics_registry.json). What this
 > section demonstrates is that the *tooling* correctly surfaces a worst bucket
 > from real data — not what that bucket turned out to be.
