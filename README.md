@@ -238,15 +238,19 @@ and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specif
 
 ## What's left
 
-Two items from the earlier inference/TensorRT investigation are done: a T4 re-run settled the
-three §7 measurement caveats (see `INFERENCE_OPTIMIZATION.md` §7), and the TensorRT ViT runbook
-executed on a Kaggle T4 with a negative result — `torch.export` fails on Qwen2.5-VL's
-data-dependent window attention, so TensorRT isn't viable for this ViT; the deployed latency lever
-stays fp16 + prompt-lookup (`docs/TENSORRT_RUNBOOK.md` §6). Open threads, none blocking:
+Three items from earlier open threads are done: a T4 re-run settled the three §7 measurement
+caveats (see `INFERENCE_OPTIMIZATION.md` §7), the TensorRT ViT runbook executed on a Kaggle T4
+with a negative result (`torch.export` fails on Qwen2.5-VL's data-dependent window attention, so
+TensorRT isn't viable for this ViT; the deployed latency lever stays fp16 + prompt-lookup, see
+`docs/TENSORRT_RUNBOOK.md` §6), and Task 3's box-provenance A/B ran end to end on an H100 — see
+the result table above and [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).
 
-- Task 3's training + evaluation phases (5–7 in `deconfound/RUNBOOK.md`) have not been run — the
-  pipeline is built and its manifest/assembly phases are gated and testable, but the two arms
-  have not yet been trained end-to-end on an H100.
+Future work, none blocking:
+
+- Scale Task 3 back up — base 2,652 → the original 7,228 target, and test 402 → the full fixed
+  1,041 frames — to check the FM-vs-GT delta holds at full scale, not just the reduced
+  reconstruction it was measured on.
+- Multi-seed Task 3 re-runs for confidence intervals; the current result is a single run per arm.
 - An optional v4b ablation: retrain dropping the 216 `no_hazard` negatives introduced in v4, to
   test whether they were separately suppressing recall alongside the box-provenance effect Task 3
   measured.
