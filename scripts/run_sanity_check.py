@@ -122,7 +122,7 @@ EXPECTED_PATHS = [
     "demo/",
     "tests/",
     "README.md",
-    "MODEL_CARD.md",
+    "docs/MODEL_CARD.md",
     "CLAUDE.md",
     "pyproject.toml",
     ".gitignore",
@@ -178,7 +178,7 @@ try:
 except FileNotFoundError:
     check("README has results table", False, "README.md not found")
 
-model_card_path = PROJECT_ROOT / "MODEL_CARD.md"
+model_card_path = PROJECT_ROOT / "docs" / "MODEL_CARD.md"
 try:
     mc_text = model_card_path.read_text(encoding="utf-8")
     has_frontmatter = mc_text.startswith("---")

@@ -1,7 +1,7 @@
 # DriveSense-VLM — Inference Optimization Study
 
-> Part of **[DriveSense-VLM](README.md)** — see the README for status, the full results tables, and the canonical [What's left](README.md#whats-left-future-work).
-> Detection numbers trace to [`results/metrics_registry.json`](results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left-future-work).
+> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
 
 
 A bottleneck-driven optimization study for the DriveSense-VLM (Qwen2.5-VL-3B LoRA)

@@ -20,8 +20,8 @@ a byte-for-byte replay of the published v3/v4 rows. The base set is 2,652 frames
 original 7,228 target, and the evaluated test set is 402 of the 1,041 held-out frames (the
 subset with images still available locally). Absolute recall numbers below are correspondingly
 lower than v3/v4's; the number that matters here is the FM-vs-GT delta, not the absolute level.
-The pipeline that does the rebuild is [`deconfound/`](deconfound/), see
-[`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md) for the full reconstruction and run procedure.
+The pipeline that does the rebuild is [`deconfound/`](../deconfound/), see
+[`deconfound/RUNBOOK.md`](../deconfound/RUNBOOK.md) for the full reconstruction and run procedure.
 
 ## Setup
 
@@ -97,13 +97,13 @@ part, to box-provenance quality on the added data, not solely to the targeting s
 ## Reproducing this
 
 The raw eval output backing every number above is committed at
-[`results/task3_deconfound/`](results/task3_deconfound/): `results_fm/` and `results_gt/`
+[`results/task3_deconfound/`](../results/task3_deconfound/): `results_fm/` and `results_gt/`
 (each with `level1_grounding/` and `level4_robustness/robustness_metrics.json`, produced by
 `scripts/run_full_evaluation.py --level 1 4`) and `deconfound_result.json` (produced by
 `deconfound/compare_arms.py` from those two).
 
 The full phase-by-phase procedure, with cost gates before any spend, is in
-[`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md). In short: `reconstruct.py` rebuilds the
+[`deconfound/RUNBOOK.md`](../deconfound/RUNBOOK.md). In short: `reconstruct.py` rebuilds the
 manifests from nuScenes and gates on cost; `describe_manifest.py` fills in
 severity/reasoning/action on GT boxes via the Batch API; `scripts/v4/v4_batch_label.py` FM-labels
 the targeted frames; `build_arms.py` assembles the two arms and asserts zero leakage; both arms

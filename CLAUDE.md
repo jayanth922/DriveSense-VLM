@@ -49,7 +49,7 @@ canonical list; do not duplicate it elsewhere).
 - **Production evaluator**: `src/drivesense/eval/production.py` — Phase 4b: ProductionEvaluator, compute_production_metrics, load_benchmark_results, generate_report, benchmark_latency, run_production_benchmark
 - **Robustness evaluator**: `src/drivesense/eval/robustness.py` — Phase 4b: RobustnessEvaluator, stratify_predictions, compute_stratified_metrics, _extract_stratum_value, _compute_all_gaps, run_robustness_evaluation
 - **Full evaluation CLI**: `scripts/run_full_evaluation.py` — Phase 4b: --level 1 2 3 4, --mock, --generate-report; compile_final_report, box-drawing ASCII report (_WIDTH=66)
-- **Model card**: `MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
+- **Model card**: `docs/MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
 - **Regression comparison lib**: `src/drivesense/eval/regression.py` — DEFAULT_METRICS, get_metric (dotted-path, splits on FIRST `.` only — `"detection_rate_by_iou.0.1"`'s own key contains a dot), relative_change, evaluate_metric (tolerance-gated), verdict_label (not tolerance-gated), compare_summaries, build_comparison_rows
 - **CI regression gate**: `scripts/run_regression_gate.py` — fails (exit 1) if a new eval_summary.json regresses vs a baseline beyond tolerance; `--tolerance NAME=FLOAT` overrides, `--output` writes the JSON report
 - **Eval comparison report**: `scripts/compare_eval_runs.py` — `--run LABEL=PATH` (repeatable), `--format console|markdown`; side-by-side metrics + improved/regressed/flat verdict vs previous run
