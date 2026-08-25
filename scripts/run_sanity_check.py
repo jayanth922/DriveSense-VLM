@@ -117,7 +117,6 @@ EXPECTED_PATHS = [
     "src/drivesense/eval/",
     "src/drivesense/utils/",
     "scripts/",
-    "slurm/",
     "notebooks/",
     "demo/",
     "tests/",
