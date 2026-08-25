@@ -184,7 +184,18 @@ dmypy.json
 *.cubin
 
 # Pod / RunPod scratch (added during v4 cleanup)
-300
 have_*.txt
 urls*.json
 *.tgz
+
+# -----------------------------------------------------------------------------
+# Task 3 de-confound pipeline (deconfound/) — orchestration only, never its outputs
+# -----------------------------------------------------------------------------
+deconfound_work/
+nuscenes/
+v1.0-trainval/
+results_fm/
+results_gt/
+arm_fm/
+arm_gt/
+deconfound_result.json

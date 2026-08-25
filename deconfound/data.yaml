@@ -1,0 +1,162 @@
+# =============================================================================
+# DriveSense-VLM Data Configuration
+# =============================================================================
+# Dataset paths, split ratios, rarity filtering thresholds, annotation settings.
+# Phase 1a (nuScenes), 1b (DADA-2000), and 1c (Annotation) read from this file.
+# Paths use ${VAR:default} syntax — expanded by utils/config.py at load time.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Dataset Paths
+# Override on HPC by setting the HPC_DATA_ROOT environment variable:
+#   export HPC_DATA_ROOT=/scratch/$USER/data
+# -----------------------------------------------------------------------------
+paths:
+  nuscenes_root: "${HPC_DATA_ROOT:~/data}/nuscenes"
+  dada2000_root: "${HPC_DATA_ROOT:~/data}/dada2000"
+  output_dir: "outputs/data"
+  cache_dir: ".cache/drivesense"
+
+# -----------------------------------------------------------------------------
+# Dataset Split
+# -----------------------------------------------------------------------------
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# nuScenes — Rarity Scoring and Frame Filtering (Phase 1a)
+# -----------------------------------------------------------------------------
+nuscenes:
+  # Use "v1.0-mini" for local development (~4GB), "v1.0-trainval" on HPC (~60GB).
+  version: "v1.0-trainval"
+  cameras:
+    - "CAM_FRONT"   # Dashcam-perspective — primary modality for hazard detection
+  rarity:
+    # Composite rarity score = sum of matching criteria below (max = 6).
+    # A frame must score >= min_rarity_score to be included.
+    proximity_threshold_m: 5.0          # +1 if any pedestrian/cyclist within 5m of ego
+    occlusion_min_visibility: 0         # Occlusion: include agents at 0% visibility
+    occlusion_max_visibility: 40        # up to 40% visibility (+1 if any such agent)
+    min_agents_for_density: 15          # +1 if scene has >=15 annotated agents
+    adverse_weather_keywords:           # +1 if scene description contains any keyword
+      - "rain"
+      - "night"
+      - "fog"
+      - "storm"
+    intersection_keywords:              # +1 (vru signal) if scene contains pedestrian
+      - "intersection"                  # AND scene description suggests intersection
+      - "crossing"
+      - "junction"
+      - "traffic light"
+      - "turn"
+    min_rarity_score: 3                 # Minimum composite score (0–6) to include frame
+
+# -----------------------------------------------------------------------------
+# DADA-2000 — Accident Frame Extraction (Phase 1b)
+# -----------------------------------------------------------------------------
+dada2000:
+  frame_extraction:
+    method: "critical_moment"           # Extract frame at annotated accident timestamp
+    additional_context_frames: 2        # Also extract 2 frames before and after critical moment
+  max_frames: 200                       # Cap at 200 frames total from DADA-2000
+  annotation_file: "dada_text_annotations.xlsx"  # Optional; relative to dada2000_root
+  # DADA-2000 has 54 accident categories. Categories are zero-padded 3-digit strings.
+  num_categories: 54
+
+# -----------------------------------------------------------------------------
+# Unified Dataset — Merged nuScenes + DADA-2000 (Phase 1b)
+# -----------------------------------------------------------------------------
+unified:
+  output_dir: "outputs/data/unified"   # Directory for per-split manifest.jsonl files
+  # Frame sources included in unified dataset (all enabled by default)
+  include_nuscenes: true
+  include_dada2000: true
+
+# -----------------------------------------------------------------------------
+# Annotation — LLM Counterfactual Generation (Phase 1c)
+# -----------------------------------------------------------------------------
+annotation:
+  llm_provider: "anthropic"            # or "openai"
+  llm_model: "claude-sonnet-4-20250514"
+  counterfactual_ratio: 0.3            # 30% of frames get counterfactual augmentations
+  output_format: "structured_json"     # Must produce valid JSON matching output schema
+  temperature: 0.3                     # Low temp for consistent structured output
+  max_tokens: 1024
+  max_concurrent_requests: 5           # Max simultaneous Anthropic API calls
+  retry_attempts: 3                    # Retries on API failure (exponential backoff)
+  retry_backoff_base: 2.0              # Backoff multiplier: wait = base^attempt seconds
+  cache_dir: "outputs/data/annotation_cache"   # Per-frame JSON cache for resume support
+  output_dir: "outputs/data/annotated"         # Annotated manifest + quality report
+  sft_output_dir: "${SFT_DIR:/workspace/deconfound_work/arm_fm}"
+
+  # Validation thresholds
+  validation:
+    min_reasoning_length: 20
+    max_hazards_per_frame: 10
+    require_ego_context: true
+
+# -----------------------------------------------------------------------------
+# PySpark — Distributed Rarity Scoring (Phase 1a-spark)
+# -----------------------------------------------------------------------------
+spark:
+  app_name: "DriveSense-RarityScorer"
+  master: "local[*]"                        # Override with spark://host:7077 on cluster
+  driver_memory: "4g"
+  shuffle_partitions: 8                     # Low for local dev; raise to 200+ on HPC
+  output_dir: "outputs/data/spark_processed"
+  log_level: "WARN"
+
+# -----------------------------------------------------------------------------
+# Image Preprocessing (shared by all dataset loaders)
+# -----------------------------------------------------------------------------
+preprocessing:
+  target_resolution: [672, 448]        # [width, height] — matches model vision config
+  normalize: true
+  mean: [0.485, 0.456, 0.406]          # ImageNet mean (used for ViT input normalization)
+  std: [0.229, 0.224, 0.225]           # ImageNet std
+
+# -----------------------------------------------------------------------------
+# Streaming Image Miner (bounded-storage blob fetch)
+# Fetch CAM_FRONT keyframe images for shopping-list frames, ONE blob at a time,
+# never storing more than a single blob tarball on disk. See run_streaming_miner.py.
+# -----------------------------------------------------------------------------
+mining:
+  metadata_path: "outputs/data/spark_processed/metadata.jsonl"  # global 34k-keyframe metadata
+  shoppinglist_path: "outputs/data/mining_shoppinglist.jsonl"   # selected frames to fetch
+  manifest_path: "outputs/data/mining_manifest.json"            # resume state (completed blobs)
+  report_path: "outputs/data/mining_report.json"                # final per-blob report
+  dataroot: "${HPC_DATA_ROOT:~/data}/nuscenes"   # real dataroot; images land in samples/CAM_FRONT/
+  temp_dir: "${HPC_DATA_ROOT:~/data}/nuscenes/_mining_tmp"  # transient blob tarball dir
+
+  # Frame selection ----------------------------------------------------------
+  hazard_band: [3, 20]              # keep frames with 3..20 GT hazards (inclusive)
+  count_mode: "hazard_class"        # "hazard_class" (box_sourcing map) or "num_annotations"
+  strata_edges: [3, 6, 9, 13, 21]   # hazard-count bucket edges for STRATIFIED sampling
+  target_count: 4500                # frames to sample from the band (0 = take the whole band)
+  seed: 42
+
+  # Bounded storage ----------------------------------------------------------
+  disk_cap_gb: 50                   # abort if the miner's transient footprint exceeds this
+
+  # The 7 trainval image blobs still needed (already have images from 01/04/08).
+  needed_blobs:
+    - "v1.0-trainval02_blobs.tgz"
+    - "v1.0-trainval03_blobs.tgz"
+    - "v1.0-trainval05_blobs.tgz"
+    - "v1.0-trainval06_blobs.tgz"
+    - "v1.0-trainval07_blobs.tgz"
+    - "v1.0-trainval09_blobs.tgz"
+    - "v1.0-trainval10_blobs.tgz"
+
+  # nuScenes auth — blobs are NOT public; they need a nuScenes account + accepted
+  # license and are served via EXPIRING signed URLs. Provide ONE of:
+  #   1. blob_urls_file: a JSON map {"v1.0-trainvalNN_blobs.tgz": "<signed url>"}
+  #      (or set env NUSCENES_BLOB_URLS to that file)
+  #   2. NUSCENES_TOKEN env + base_url below (legacy header auth; may 403 in the
+  #      signed-URL era — kept for parity with download_nuscenes.sh)
+  #   3. --blob-dir DIR with pre-downloaded tarballs (fully offline; still bounded)
+  blob_urls_file: ""               # e.g. outputs/data/nuscenes_blob_urls.json
+  base_url: "https://s3.amazonaws.com/data.nuscenes.org/public/trainval"
