@@ -83,7 +83,7 @@ class TestDataConfig:
         assert isinstance(self.config, dict)
 
     def test_required_top_level_keys(self) -> None:
-        for key in ("paths", "splits", "nuscenes", "dada2000", "annotation", "preprocessing"):
+        for key in ("paths", "splits", "nuscenes", "annotation", "preprocessing"):
             assert key in self.config, f"Missing top-level key: {key}"
 
     def test_split_ratios_sum_to_one(self) -> None:

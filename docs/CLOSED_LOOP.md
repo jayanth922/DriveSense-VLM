@@ -1,7 +1,7 @@
 # Closed-loop, failure-driven mining
 
 > Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left-future-work).
-> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](../INFERENCE_OPTIMIZATION.md).
+> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
 
 
 **The problem this closes:** Level-1 eval showed uniform near-zero
@@ -14,7 +14,7 @@ failure* drive the next mining pass, instead of guessing.
 > ⚠️ **Historical premise — read with the dates in mind.** That "uniform
 > near-zero grounding" was measured *before* the coordinate-convention bug was
 > found and fixed (see
-> [`DEBUGGING_POSTMORTEM.md`](../DEBUGGING_POSTMORTEM.md), Failure 1). Post-fix,
+> [`DEBUGGING_POSTMORTEM.md`](DEBUGGING_POSTMORTEM.md), Failure 1). Post-fix,
 > v3 grounds at P 0.40 / R 0.24 / F1 0.30 with mean IoU 0.67 — not near-zero.
 > The *motivation* for failure-driven mining still holds and the tooling below
 > is unchanged, but this paragraph describes the state of the world when the
@@ -89,7 +89,7 @@ the best-performing tier. That set had no weather/time-of-day variety
 > result reverses it: detection **scales with hazard size**, with `tiny` the
 > worst tier (22.8% v3 / 17.2% v4 @0.5) and `medium` the best (52.6%), and rain
 > and night+tiny as the weak conditions. See the
-> [README results](../README.md#results-honest-measured-on-a-fixed-test-set) and
+> [README results](../README.md#results-v2--v3--v4-fixed-test-set) and
 > [`results/metrics_registry.json`](../results/metrics_registry.json). What this
 > section demonstrates is that the *tooling* correctly surfaces a worst bucket
 > from real data — not what that bucket turned out to be.

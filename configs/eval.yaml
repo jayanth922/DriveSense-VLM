@@ -70,7 +70,11 @@ production:
 # Level 4: Robustness
 # Performance stratified by driving condition subgroups.
 # Ensures the model doesn't catastrophically fail on any operating condition.
-# OOD evaluation uses DADA-2000 as out-of-distribution test set.
+# OOD stratification is generic (robustness._infer_source keys off a frame_id
+# prefix, not this config) but currently has no populated OOD source: the
+# DADA-2000 extraction pipeline this was scaffolded against was cut from the
+# project (nuScenes-only), so the OOD bucket is empty until another
+# out-of-distribution source is wired in.
 # -----------------------------------------------------------------------------
 robustness:
   stratify_by:
@@ -78,7 +82,6 @@ robustness:
     - "weather"           # clear vs rain vs fog
     - "location"          # boston vs singapore (nuScenes locations)
     - "ego_speed_bucket"  # 0–20, 20–40, 40+ km/h
-  ood_dataset: "dada2000"             # OOD test: evaluate on DADA-2000 exclusively
   targets:
     max_day_night_gap: 0.10           # Max acceptable IoU drop: day vs night
     max_weather_gap: 0.15             # Max acceptable IoU drop: clear vs adverse
