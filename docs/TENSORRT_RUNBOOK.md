@@ -169,7 +169,7 @@ python scripts/run_benchmark.py --local --image-dir outputs/data/nuscenes_filter
     --config configs/inference.yaml --num-iterations 100 --warmup 10 \
     --output outputs/benchmarks/b_nf4_compile.json
 # (confirm configs/inference.yaml points at the NF4 model + torch.compile is enabled
-#  for this run — check demo/app.py's loading path for the exact flags it sets)
+#  for this run — check huggingface_space/app.py's loading path for the exact flags it sets)
 
 # (c) TensorRT ViT swapped into the full pipeline
 python scripts/run_benchmark.py --local --vit-only --image-dir outputs/data/nuscenes_filtered/images \

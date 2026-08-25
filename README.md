@@ -233,7 +233,7 @@ or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
 | `docs/` | Deep dives: observability, closed-loop mining, TensorRT runbook |
 | `configs/*.yaml` | All hyperparameters and paths — never hardcoded in source |
 | `tests/` | CPU-only, mock-backed test suite — no GPU, downloads, or API keys |
-| `demo/` | Gradio app for HuggingFace Spaces (T4, NF4) |
+| `huggingface_space/` | Gradio app deployed to HuggingFace Spaces (T4, NF4) |
 | `notebooks/` | Colab execution notebooks (data → training → optimization → eval) |
 | `.github/workflows/ci.yml` | Tests, mock pipeline smoke, and the regression gate |
 
