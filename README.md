@@ -284,7 +284,7 @@ Future work, none blocking:
 python -m pytest tests/ -v
 ```
 
-The suite (652 tests, 648 pass / 4 skip without a GPU) is CPU-only and mock-backed — no GPU,
+The suite (587 tests, 583 pass / 4 skip without a GPU) is CPU-only and mock-backed — no GPU,
 model downloads, or API keys required.
 
 ---
