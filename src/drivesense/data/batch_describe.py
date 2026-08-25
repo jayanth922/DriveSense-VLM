@@ -154,7 +154,9 @@ def _poll_and_collect(client: object, batch_id: str, on_result: Callable[[str, d
     for res in client.messages.batches.results(batch_id):  # type: ignore[attr-defined]
         if res.result.type != "succeeded":
             continue
-        vlm = parse_batch_text(res.result.message.content[0].text)
+        _text = next((b.text for b in res.result.message.content
+                      if getattr(b, "type", None) == "text"), "")
+        vlm = parse_batch_text(_text)
         if vlm is not None:
             on_result(res.custom_id, vlm)
             n += 1
