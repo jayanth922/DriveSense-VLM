@@ -206,7 +206,7 @@ python -m pytest tests/ -v                       # test suite, no GPU or downloa
 ```
 
 A full training + eval run needs a GPU (Colab or RunPod) — see the runbooks under `notebooks/`
-and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
+or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
 
 ---
 
@@ -235,7 +235,6 @@ and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specif
 | `tests/` | CPU-only, mock-backed test suite — no GPU, downloads, or API keys |
 | `demo/` | Gradio app for HuggingFace Spaces (T4, NF4) |
 | `notebooks/` | Colab execution notebooks (data → training → optimization → eval) |
-| `slurm/` | HPC job scripts (alternative to Colab) |
 | `.github/workflows/ci.yml` | Tests, mock pipeline smoke, and the regression gate |
 
 ---
