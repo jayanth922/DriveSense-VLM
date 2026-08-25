@@ -1,0 +1,38 @@
+{
+  "occluded_pedestrian": {
+    "precision": 0.375,
+    "recall": 0.0345,
+    "f1": 0.0632,
+    "count": 87
+  },
+  "jaywalking": {
+    "precision": 0.4607,
+    "recall": 0.3004,
+    "f1": 0.3636,
+    "count": 273
+  },
+  "cyclist_proximity": {
+    "precision": 0.625,
+    "recall": 0.0442,
+    "f1": 0.0826,
+    "count": 113
+  },
+  "construction_zone": {
+    "precision": 0.1939,
+    "recall": 0.1288,
+    "f1": 0.1548,
+    "count": 295
+  },
+  "high_density": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "count": 0
+  },
+  "unusual_object": {
+    "precision": 1.0,
+    "recall": 0.1667,
+    "f1": 0.2857,
+    "count": 6
+  }
+}

@@ -33,7 +33,9 @@ whole thing together.
 Every detection number below traces to [`results/metrics_registry.json`](results/metrics_registry.json);
 every inference number traces to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md),
 reproducible with [`scripts/inference_benchmark.py`](scripts/inference_benchmark.py); Task 3's
-numbers trace to [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md) and are reproducible with
+numbers trace to the committed eval output at
+[`results/task3_deconfound/`](results/task3_deconfound/) (full write-up in
+[`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md)) and are reproducible with
 [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md).
 
 ---
@@ -57,14 +59,14 @@ the finding, not the absolute recall numbers.
 
 | metric | FM | GT |
 |---|---|---|
-| Recall (detection rate) | 0.101 | 0.168 |
-| Precision | 0.176 | 0.333 |
-| F1 | 0.128 | 0.223 |
+| Recall (detection rate) | 0.101 | 0.167 |
+| Precision | 0.176 | 0.330 |
+| F1 | 0.128 | 0.222 |
 | False-positive rate (lower is better) | 0.488 | 0.169 |
-| Mean best-pair IoU | 0.245 | 0.458 |
+| Mean best-pair IoU | 0.244 | 0.458 |
 | Frame detect @ IoU 0.5 | 0.266 | 0.566 |
 | No-hazard accuracy | 0.512 | 0.831 |
-| Mean IoU (matched) | 0.631 | 0.640 |
+| Mean IoU (matched) | 0.632 | 0.641 |
 | Label accuracy (matched) | 0.962 | 0.954 |
 
 GT-projected boxes win on every axis except matched-class label accuracy, where the two arms are
@@ -75,9 +77,11 @@ it does draw in rain is wrong). Box-supervision provenance was a real, previousl
 driver of the v4 regression, not a minor detail. Limitations — reduced scale, a small rain bucket
 (104 frames), single seed — are stated in full in [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).
 
-Reproduce with [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md), which walks phases 0–7 (nuScenes
-reconstruction, GT-describe, FM-label, arm assembly, training, evaluation) with a cost gate and a
-$0 mock dry-run before any real spend.
+The raw eval output backing this table is committed at
+[`results/task3_deconfound/`](results/task3_deconfound/) (`results_fm/`, `results_gt/`,
+`deconfound_result.json`) — reproduce with [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md), which
+walks phases 0–7 (nuScenes reconstruction, GT-describe, FM-label, arm assembly, training,
+evaluation) with a cost gate and a $0 mock dry-run before any real spend.
 
 ---
 

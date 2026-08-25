@@ -1,0 +1,181 @@
+{
+  "rain": {
+    "iou_at_threshold": 0.0408,
+    "hazard_detection_rate": 0.05,
+    "false_positive_rate": 0.069,
+    "precision": 0.1818,
+    "f1_score": 0.0784,
+    "mean_iou": 0.6219,
+    "classification_accuracy": 1.0,
+    "mean_best_pair_iou": 0.3222,
+    "global_max_iou": 0.7987,
+    "detection_rate_by_iou": {
+      "0.1": 0.6,
+      "0.3": 0.55,
+      "0.5": 0.4
+    },
+    "scene_label_metrics": {
+      "high_density": {
+        "precision": 0.7961,
+        "recall": 0.988,
+        "f1": 0.8817,
+        "tp": 82,
+        "fp": 21,
+        "fn": 1
+      }
+    },
+    "total_frames": 104,
+    "total_gt_hazards": 160,
+    "total_pred_hazards": 44,
+    "true_positives": 8,
+    "false_positives": 36,
+    "false_negatives": 152,
+    "true_negatives": 27,
+    "no_hazard_accuracy": 0.931,
+    "per_class_metrics": {
+      "occluded_pedestrian": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 15
+      },
+      "jaywalking": {
+        "precision": 0.3158,
+        "recall": 0.2,
+        "f1": 0.2449,
+        "count": 30
+      },
+      "cyclist_proximity": {
+        "precision": 0.5,
+        "recall": 0.0189,
+        "f1": 0.0364,
+        "count": 53
+      },
+      "construction_zone": {
+        "precision": 0.0435,
+        "recall": 0.0161,
+        "f1": 0.0235,
+        "count": 62
+      },
+      "high_density": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      },
+      "unusual_object": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      }
+    },
+    "confusion_matrix": {
+      "jaywalking": {
+        "jaywalking": 6
+      },
+      "cyclist_proximity": {
+        "cyclist_proximity": 1
+      },
+      "construction_zone": {
+        "construction_zone": 1
+      }
+    },
+    "parse_failure_rate": 0.0096,
+    "parse_failures": 1,
+    "n_frames": 104
+  },
+  "clear": {
+    "iou_at_threshold": 0.144,
+    "hazard_detection_rate": 0.1971,
+    "false_positive_rate": 0.2,
+    "precision": 0.3487,
+    "f1_score": 0.2518,
+    "mean_iou": 0.6422,
+    "classification_accuracy": 0.9504,
+    "mean_best_pair_iou": 0.4774,
+    "global_max_iou": 0.892,
+    "detection_rate_by_iou": {
+      "0.1": 0.8201,
+      "0.3": 0.7698,
+      "0.5": 0.5899
+    },
+    "scene_label_metrics": {
+      "high_density": {
+        "precision": 0.829,
+        "recall": 0.9489,
+        "f1": 0.8849,
+        "tp": 223,
+        "fp": 46,
+        "fn": 12
+      }
+    },
+    "total_frames": 298,
+    "total_gt_hazards": 606,
+    "total_pred_hazards": 347,
+    "true_positives": 121,
+    "false_positives": 226,
+    "false_negatives": 493,
+    "true_negatives": 76,
+    "no_hazard_accuracy": 0.8,
+    "per_class_metrics": {
+      "occluded_pedestrian": {
+        "precision": 0.375,
+        "recall": 0.0417,
+        "f1": 0.075,
+        "count": 72
+      },
+      "jaywalking": {
+        "precision": 0.478,
+        "recall": 0.3128,
+        "f1": 0.3781,
+        "count": 243
+      },
+      "cyclist_proximity": {
+        "precision": 0.6667,
+        "recall": 0.0667,
+        "f1": 0.1212,
+        "count": 60
+      },
+      "construction_zone": {
+        "precision": 0.2139,
+        "recall": 0.1588,
+        "f1": 0.1823,
+        "count": 233
+      },
+      "high_density": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      },
+      "unusual_object": {
+        "precision": 1.0,
+        "recall": 0.1667,
+        "f1": 0.2857,
+        "count": 6
+      }
+    },
+    "confusion_matrix": {
+      "jaywalking": {
+        "jaywalking": 74,
+        "occluded_pedestrian": 2
+      },
+      "cyclist_proximity": {
+        "cyclist_proximity": 4
+      },
+      "construction_zone": {
+        "construction_zone": 37
+      },
+      "unusual_object": {
+        "construction_zone": 1
+      },
+      "occluded_pedestrian": {
+        "jaywalking": 3
+      }
+    },
+    "parse_failure_rate": 0.0034,
+    "parse_failures": 1,
+    "n_frames": 298
+  }
+}

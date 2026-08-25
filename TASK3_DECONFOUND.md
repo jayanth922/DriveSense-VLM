@@ -42,14 +42,14 @@ Overall, on the 402-frame test set:
 
 | metric | FM | GT |
 |---|---|---|
-| Recall (detection rate) | 0.101 | 0.168 |
-| Precision | 0.176 | 0.333 |
-| F1 | 0.128 | 0.223 |
+| Recall (detection rate) | 0.101 | 0.167 |
+| Precision | 0.176 | 0.330 |
+| F1 | 0.128 | 0.222 |
 | False-positive rate (lower is better) | 0.488 | 0.169 |
-| Mean best-pair IoU | 0.245 | 0.458 |
+| Mean best-pair IoU | 0.244 | 0.458 |
 | Frame detect @ IoU 0.5 | 0.266 | 0.566 |
 | No-hazard accuracy | 0.512 | 0.831 |
-| Mean IoU (matched) | 0.631 | 0.640 |
+| Mean IoU (matched) | 0.632 | 0.641 |
 | Label accuracy (matched) | 0.962 | 0.954 |
 
 GT wins on every axis except matched-class label accuracy, where the two arms are within a
@@ -62,15 +62,15 @@ Detection rate by condition:
 
 | condition | n | FM | GT |
 |---|---|---|---|
-| Day | 283 | 0.130 | 0.173 |
+| Day | 283 | 0.130 | 0.171 |
 | Night | 119 | 0.000 | 0.151 |
-| Clear | 298 | 0.127 | 0.199 |
+| Clear | 298 | 0.127 | 0.197 |
 | Rain | 104 | 0.000 | 0.050 |
 
 The FM arm detects nothing at all at night or in rain. Its day/night detection gap is 0.130;
-the GT arm's is 0.022. In rain, every box the FM arm does emit is wrong — a 1.00 false-positive
-rate on that bucket. The GT arm is also weak in rain (0.050 recall on 104 frames), but it at
-least degrades rather than collapsing.
+the GT arm's is 0.020. In rain, every box the FM arm does emit is wrong — a 1.00 false-positive
+rate on that bucket, against 0.069 for the GT arm. The GT arm is also weak in rain (0.050 recall
+on 104 frames), but it at least degrades rather than collapsing.
 
 ## Reading this result
 
@@ -96,11 +96,17 @@ part, to box-provenance quality on the added data, not solely to the targeting s
 
 ## Reproducing this
 
+The raw eval output backing every number above is committed at
+[`results/task3_deconfound/`](results/task3_deconfound/): `results_fm/` and `results_gt/`
+(each with `level1_grounding/` and `level4_robustness/robustness_metrics.json`, produced by
+`scripts/run_full_evaluation.py --level 1 4`) and `deconfound_result.json` (produced by
+`deconfound/compare_arms.py` from those two).
+
 The full phase-by-phase procedure, with cost gates before any spend, is in
 [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md). In short: `reconstruct.py` rebuilds the
 manifests from nuScenes and gates on cost; `describe_manifest.py` fills in
 severity/reasoning/action on GT boxes via the Batch API; `scripts/v4/v4_batch_label.py` FM-labels
 the targeted frames; `build_arms.py` assembles the two arms and asserts zero leakage; both arms
-train with `scripts/run_training.py --config deconfound/training_h100.yaml`; and
-`deconfound/compare_arms.py` reads both arms' `run_full_evaluation.py` output and produces the
-tables above as `deconfound_result.json`.
+train with `scripts/run_training.py --config deconfound/training_h100.yaml`; predictions come
+from `scripts/run_generate_predictions.py` against each trained arm; and `run_full_evaluation.py`
++ `deconfound/compare_arms.py` produce the tables above.

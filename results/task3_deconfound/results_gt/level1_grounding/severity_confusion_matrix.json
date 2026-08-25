@@ -1,0 +1,10 @@
+{
+  "high": {
+    "medium": 77,
+    "high": 13
+  },
+  "medium": {
+    "medium": 35,
+    "low": 4
+  }
+}

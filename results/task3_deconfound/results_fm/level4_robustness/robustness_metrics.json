@@ -1,0 +1,624 @@
+{
+  "by_time_of_day": {
+    "day": {
+      "iou_at_threshold": 0.0859,
+      "hazard_detection_rate": 0.1296,
+      "false_positive_rate": 0.519,
+      "precision": 0.2031,
+      "f1_score": 0.1582,
+      "mean_iou": 0.6319,
+      "classification_accuracy": 0.9615,
+      "mean_best_pair_iou": 0.2932,
+      "global_max_iou": 0.8272,
+      "detection_rate_by_iou": {
+        "0.1": 0.5536,
+        "0.3": 0.494,
+        "0.5": 0.3274
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.867,
+          "recall": 0.6763,
+          "f1": 0.7599,
+          "tp": 163,
+          "fp": 25,
+          "fn": 78
+        }
+      },
+      "total_frames": 283,
+      "total_gt_hazards": 593,
+      "total_pred_hazards": 384,
+      "true_positives": 78,
+      "false_positives": 306,
+      "false_negatives": 524,
+      "true_negatives": 38,
+      "no_hazard_accuracy": 0.481,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.2,
+          "recall": 0.0517,
+          "f1": 0.0822,
+          "count": 58
+        },
+        "jaywalking": {
+          "precision": 0.4159,
+          "recall": 0.2866,
+          "f1": 0.3394,
+          "count": 164
+        },
+        "cyclist_proximity": {
+          "precision": 0.5,
+          "recall": 0.0202,
+          "f1": 0.0388,
+          "count": 99
+        },
+        "construction_zone": {
+          "precision": 0.1032,
+          "recall": 0.0945,
+          "f1": 0.0987,
+          "count": 275
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 6
+        }
+      },
+      "confusion_matrix": {
+        "jaywalking": {
+          "jaywalking": 47
+        },
+        "construction_zone": {
+          "construction_zone": 26
+        },
+        "cyclist_proximity": {
+          "cyclist_proximity": 2
+        },
+        "occluded_pedestrian": {
+          "jaywalking": 3
+        }
+      },
+      "parse_failure_rate": 0.0071,
+      "parse_failures": 2,
+      "n_frames": 283
+    },
+    "night": {
+      "iou_at_threshold": 0.0,
+      "hazard_detection_rate": 0.0,
+      "false_positive_rate": 0.4348,
+      "precision": 0.0,
+      "f1_score": 0.0,
+      "mean_iou": 0.0,
+      "classification_accuracy": 0.0,
+      "mean_best_pair_iou": 0.0348,
+      "global_max_iou": 0.3963,
+      "detection_rate_by_iou": {
+        "0.1": 0.1026,
+        "0.3": 0.0513,
+        "0.5": 0.0
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.9375,
+          "recall": 0.1948,
+          "f1": 0.3226,
+          "tp": 15,
+          "fp": 1,
+          "fn": 62
+        }
+      },
+      "total_frames": 119,
+      "total_gt_hazards": 172,
+      "total_pred_hazards": 59,
+      "true_positives": 0,
+      "false_positives": 59,
+      "false_negatives": 172,
+      "true_negatives": 26,
+      "no_hazard_accuracy": 0.5652,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 29
+        },
+        "jaywalking": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 109
+        },
+        "cyclist_proximity": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 14
+        },
+        "construction_zone": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 20
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        }
+      },
+      "confusion_matrix": {},
+      "parse_failure_rate": 0.0,
+      "parse_failures": 0,
+      "n_frames": 119
+    }
+  },
+  "by_weather": {
+    "rain": {
+      "iou_at_threshold": 0.0,
+      "hazard_detection_rate": 0.0,
+      "false_positive_rate": 1.0,
+      "precision": 0.0,
+      "f1_score": 0.0,
+      "mean_iou": 0.0,
+      "classification_accuracy": 0.0,
+      "mean_best_pair_iou": 0.0049,
+      "global_max_iou": 0.106,
+      "detection_rate_by_iou": {
+        "0.1": 0.0154,
+        "0.3": 0.0,
+        "0.5": 0.0
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.8333,
+          "recall": 0.0602,
+          "f1": 0.1124,
+          "tp": 5,
+          "fp": 1,
+          "fn": 78
+        }
+      },
+      "total_frames": 104,
+      "total_gt_hazards": 160,
+      "total_pred_hazards": 95,
+      "true_positives": 0,
+      "false_positives": 95,
+      "false_negatives": 160,
+      "true_negatives": 0,
+      "no_hazard_accuracy": 0.0,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 15
+        },
+        "jaywalking": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 30
+        },
+        "cyclist_proximity": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 53
+        },
+        "construction_zone": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 62
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        }
+      },
+      "confusion_matrix": {},
+      "parse_failure_rate": 0.0,
+      "parse_failures": 0,
+      "n_frames": 104
+    },
+    "clear": {
+      "iou_at_threshold": 0.0882,
+      "hazard_detection_rate": 0.127,
+      "false_positive_rate": 0.3263,
+      "precision": 0.2241,
+      "f1_score": 0.1622,
+      "mean_iou": 0.6319,
+      "classification_accuracy": 0.9615,
+      "mean_best_pair_iou": 0.3541,
+      "global_max_iou": 0.8272,
+      "detection_rate_by_iou": {
+        "0.1": 0.6761,
+        "0.3": 0.5986,
+        "0.5": 0.3873
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.8737,
+          "recall": 0.7362,
+          "f1": 0.7991,
+          "tp": 173,
+          "fp": 25,
+          "fn": 62
+        }
+      },
+      "total_frames": 298,
+      "total_gt_hazards": 605,
+      "total_pred_hazards": 348,
+      "true_positives": 78,
+      "false_positives": 270,
+      "false_negatives": 536,
+      "true_negatives": 64,
+      "no_hazard_accuracy": 0.6737,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0769,
+          "recall": 0.0417,
+          "f1": 0.0541,
+          "count": 72
+        },
+        "jaywalking": {
+          "precision": 0.4159,
+          "recall": 0.1934,
+          "f1": 0.264,
+          "count": 243
+        },
+        "cyclist_proximity": {
+          "precision": 0.5,
+          "recall": 0.0333,
+          "f1": 0.0625,
+          "count": 60
+        },
+        "construction_zone": {
+          "precision": 0.1368,
+          "recall": 0.1116,
+          "f1": 0.1229,
+          "count": 233
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 6
+        }
+      },
+      "confusion_matrix": {
+        "jaywalking": {
+          "jaywalking": 47
+        },
+        "construction_zone": {
+          "construction_zone": 26
+        },
+        "cyclist_proximity": {
+          "cyclist_proximity": 2
+        },
+        "occluded_pedestrian": {
+          "jaywalking": 3
+        }
+      },
+      "parse_failure_rate": 0.0067,
+      "parse_failures": 2,
+      "n_frames": 298
+    }
+  },
+  "by_location": {
+    "unknown": {
+      "iou_at_threshold": 0.0685,
+      "hazard_detection_rate": 0.1008,
+      "false_positive_rate": 0.488,
+      "precision": 0.1761,
+      "f1_score": 0.1282,
+      "mean_iou": 0.6319,
+      "classification_accuracy": 0.9615,
+      "mean_best_pair_iou": 0.2445,
+      "global_max_iou": 0.8272,
+      "detection_rate_by_iou": {
+        "0.1": 0.4686,
+        "0.3": 0.4106,
+        "0.5": 0.2657
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.8725,
+          "recall": 0.5597,
+          "f1": 0.682,
+          "tp": 178,
+          "fp": 26,
+          "fn": 140
+        }
+      },
+      "total_frames": 402,
+      "total_gt_hazards": 765,
+      "total_pred_hazards": 443,
+      "true_positives": 78,
+      "false_positives": 365,
+      "false_negatives": 696,
+      "true_negatives": 64,
+      "no_hazard_accuracy": 0.512,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0588,
+          "recall": 0.0345,
+          "f1": 0.0435,
+          "count": 87
+        },
+        "jaywalking": {
+          "precision": 0.4159,
+          "recall": 0.1722,
+          "f1": 0.2435,
+          "count": 273
+        },
+        "cyclist_proximity": {
+          "precision": 0.4,
+          "recall": 0.0177,
+          "f1": 0.0339,
+          "count": 113
+        },
+        "construction_zone": {
+          "precision": 0.0956,
+          "recall": 0.0881,
+          "f1": 0.0917,
+          "count": 295
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 6
+        }
+      },
+      "confusion_matrix": {
+        "jaywalking": {
+          "jaywalking": 47
+        },
+        "construction_zone": {
+          "construction_zone": 26
+        },
+        "cyclist_proximity": {
+          "cyclist_proximity": 2
+        },
+        "occluded_pedestrian": {
+          "jaywalking": 3
+        }
+      },
+      "parse_failure_rate": 0.005,
+      "parse_failures": 2,
+      "n_frames": 402
+    }
+  },
+  "by_ego_speed_bucket": {
+    "0-20": {
+      "iou_at_threshold": 0.0685,
+      "hazard_detection_rate": 0.1008,
+      "false_positive_rate": 0.488,
+      "precision": 0.1761,
+      "f1_score": 0.1282,
+      "mean_iou": 0.6319,
+      "classification_accuracy": 0.9615,
+      "mean_best_pair_iou": 0.2445,
+      "global_max_iou": 0.8272,
+      "detection_rate_by_iou": {
+        "0.1": 0.4686,
+        "0.3": 0.4106,
+        "0.5": 0.2657
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.8725,
+          "recall": 0.5597,
+          "f1": 0.682,
+          "tp": 178,
+          "fp": 26,
+          "fn": 140
+        }
+      },
+      "total_frames": 402,
+      "total_gt_hazards": 765,
+      "total_pred_hazards": 443,
+      "true_positives": 78,
+      "false_positives": 365,
+      "false_negatives": 696,
+      "true_negatives": 64,
+      "no_hazard_accuracy": 0.512,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0588,
+          "recall": 0.0345,
+          "f1": 0.0435,
+          "count": 87
+        },
+        "jaywalking": {
+          "precision": 0.4159,
+          "recall": 0.1722,
+          "f1": 0.2435,
+          "count": 273
+        },
+        "cyclist_proximity": {
+          "precision": 0.4,
+          "recall": 0.0177,
+          "f1": 0.0339,
+          "count": 113
+        },
+        "construction_zone": {
+          "precision": 0.0956,
+          "recall": 0.0881,
+          "f1": 0.0917,
+          "count": 295
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 6
+        }
+      },
+      "confusion_matrix": {
+        "jaywalking": {
+          "jaywalking": 47
+        },
+        "construction_zone": {
+          "construction_zone": 26
+        },
+        "cyclist_proximity": {
+          "cyclist_proximity": 2
+        },
+        "occluded_pedestrian": {
+          "jaywalking": 3
+        }
+      },
+      "parse_failure_rate": 0.005,
+      "parse_failures": 2,
+      "n_frames": 402
+    }
+  },
+  "by_source": {
+    "nuscenes": {
+      "iou_at_threshold": 0.0685,
+      "hazard_detection_rate": 0.1008,
+      "false_positive_rate": 0.488,
+      "precision": 0.1761,
+      "f1_score": 0.1282,
+      "mean_iou": 0.6319,
+      "classification_accuracy": 0.9615,
+      "mean_best_pair_iou": 0.2445,
+      "global_max_iou": 0.8272,
+      "detection_rate_by_iou": {
+        "0.1": 0.4686,
+        "0.3": 0.4106,
+        "0.5": 0.2657
+      },
+      "scene_label_metrics": {
+        "high_density": {
+          "precision": 0.8725,
+          "recall": 0.5597,
+          "f1": 0.682,
+          "tp": 178,
+          "fp": 26,
+          "fn": 140
+        }
+      },
+      "total_frames": 402,
+      "total_gt_hazards": 765,
+      "total_pred_hazards": 443,
+      "true_positives": 78,
+      "false_positives": 365,
+      "false_negatives": 696,
+      "true_negatives": 64,
+      "no_hazard_accuracy": 0.512,
+      "per_class_metrics": {
+        "occluded_pedestrian": {
+          "precision": 0.0588,
+          "recall": 0.0345,
+          "f1": 0.0435,
+          "count": 87
+        },
+        "jaywalking": {
+          "precision": 0.4159,
+          "recall": 0.1722,
+          "f1": 0.2435,
+          "count": 273
+        },
+        "cyclist_proximity": {
+          "precision": 0.4,
+          "recall": 0.0177,
+          "f1": 0.0339,
+          "count": 113
+        },
+        "construction_zone": {
+          "precision": 0.0956,
+          "recall": 0.0881,
+          "f1": 0.0917,
+          "count": 295
+        },
+        "high_density": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 0
+        },
+        "unusual_object": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "count": 6
+        }
+      },
+      "confusion_matrix": {
+        "jaywalking": {
+          "jaywalking": 47
+        },
+        "construction_zone": {
+          "construction_zone": 26
+        },
+        "cyclist_proximity": {
+          "cyclist_proximity": 2
+        },
+        "occluded_pedestrian": {
+          "jaywalking": 3
+        }
+      },
+      "parse_failure_rate": 0.005,
+      "parse_failures": 2,
+      "n_frames": 402
+    }
+  },
+  "gaps": {
+    "day_night_detection_rate_gap": 0.1296,
+    "weather_detection_rate_gap": 0.127,
+    "location_detection_rate_gap": 0.0,
+    "source_detection_rate_gap": 0.0,
+    "speed_detection_rate_gap": 0.0,
+    "ood_relative_performance": 0.0
+  },
+  "targets_met": {
+    "day_night_gap": false,
+    "weather_gap": true,
+    "location_gap": true,
+    "ood_performance": false
+  },
+  "overall_pass": false
+}

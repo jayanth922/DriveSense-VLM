@@ -1,0 +1,14 @@
+{
+  "jaywalking": {
+    "jaywalking": 47
+  },
+  "construction_zone": {
+    "construction_zone": 26
+  },
+  "cyclist_proximity": {
+    "cyclist_proximity": 2
+  },
+  "occluded_pedestrian": {
+    "jaywalking": 3
+  }
+}

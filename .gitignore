@@ -65,13 +65,16 @@ venv.bak/
 data/
 outputs/
 checkpoints/
-# results/ is ignored in bulk, but two small artifacts are committed on purpose:
-# CI (.github/workflows/ci.yml) reads metrics_registry.json, and mlops_report.md is
-# the generated summary linked from README. Uses results/* so the negations can apply
-# (a negation cannot re-include a file under an excluded *directory*).
+# results/ is ignored in bulk, but committed artifacts are unignored explicitly:
+# CI (.github/workflows/ci.yml) reads metrics_registry.json, mlops_report.md is the
+# generated summary linked from README, and results/task3_deconfound/ is the real
+# Task 3 eval output (see results/task3_deconfound/). Uses results/* so the negations
+# can apply (a negation cannot re-include a file under an excluded *directory*).
 results/*
 !results/metrics_registry.json
 !results/mlops_report.md
+!results/task3_deconfound/
+!results/task3_deconfound/**
 datasets/
 # Unignore the Python package — data/ above would otherwise match src/drivesense/data/
 !src/drivesense/data/
@@ -189,13 +192,15 @@ urls*.json
 *.tgz
 
 # -----------------------------------------------------------------------------
-# Task 3 de-confound pipeline (deconfound/) — orchestration only, never its outputs
+# Task 3 de-confound pipeline (deconfound/) — orchestration only, not a local run's
+# raw working directory. Anchored to repo root (leading /) so these don't shadow
+# the real, committed copy at results/task3_deconfound/.
 # -----------------------------------------------------------------------------
 deconfound_work/
 nuscenes/
 v1.0-trainval/
-results_fm/
-results_gt/
-arm_fm/
-arm_gt/
-deconfound_result.json
+/results_fm/
+/results_gt/
+/arm_fm/
+/arm_gt/
+/deconfound_result.json
