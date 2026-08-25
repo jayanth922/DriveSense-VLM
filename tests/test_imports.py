@@ -27,7 +27,6 @@ ALL_MODULES = [
     "drivesense",
     "drivesense.data",
     "drivesense.data.nuscenes_loader",
-    "drivesense.data.dada_loader",
     "drivesense.data.annotation",
     "drivesense.data.dataset",
     "drivesense.data.transforms",

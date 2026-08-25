@@ -1,0 +1,176 @@
+{
+  "day": {
+    "iou_at_threshold": 0.1245,
+    "hazard_detection_rate": 0.1711,
+    "false_positive_rate": 0.2051,
+    "precision": 0.314,
+    "f1_score": 0.2215,
+    "mean_iou": 0.6373,
+    "classification_accuracy": 0.9515,
+    "mean_best_pair_iou": 0.4468,
+    "global_max_iou": 0.892,
+    "detection_rate_by_iou": {
+      "0.1": 0.7937,
+      "0.3": 0.7381,
+      "0.5": 0.5317
+    },
+    "scene_label_metrics": {
+      "high_density": {
+        "precision": 0.8613,
+        "recall": 0.9793,
+        "f1": 0.9165,
+        "tp": 236,
+        "fp": 38,
+        "fn": 5
+      }
+    },
+    "total_frames": 283,
+    "total_gt_hazards": 594,
+    "total_pred_hazards": 328,
+    "true_positives": 103,
+    "false_positives": 225,
+    "false_negatives": 499,
+    "true_negatives": 62,
+    "no_hazard_accuracy": 0.7949,
+    "per_class_metrics": {
+      "occluded_pedestrian": {
+        "precision": 0.4286,
+        "recall": 0.0517,
+        "f1": 0.0923,
+        "count": 58
+      },
+      "jaywalking": {
+        "precision": 0.4409,
+        "recall": 0.3415,
+        "f1": 0.3849,
+        "count": 164
+      },
+      "cyclist_proximity": {
+        "precision": 0.7143,
+        "recall": 0.0505,
+        "f1": 0.0943,
+        "count": 99
+      },
+      "construction_zone": {
+        "precision": 0.2043,
+        "recall": 0.1382,
+        "f1": 0.1649,
+        "count": 275
+      },
+      "high_density": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      },
+      "unusual_object": {
+        "precision": 1.0,
+        "recall": 0.1667,
+        "f1": 0.2857,
+        "count": 6
+      }
+    },
+    "confusion_matrix": {
+      "jaywalking": {
+        "jaywalking": 55,
+        "occluded_pedestrian": 1
+      },
+      "cyclist_proximity": {
+        "cyclist_proximity": 5
+      },
+      "construction_zone": {
+        "construction_zone": 38
+      },
+      "unusual_object": {
+        "construction_zone": 1
+      },
+      "occluded_pedestrian": {
+        "jaywalking": 3
+      }
+    },
+    "parse_failure_rate": 0.0071,
+    "parse_failures": 2,
+    "n_frames": 283
+  },
+  "night": {
+    "iou_at_threshold": 0.1244,
+    "hazard_detection_rate": 0.1512,
+    "false_positive_rate": 0.1087,
+    "precision": 0.4127,
+    "f1_score": 0.2213,
+    "mean_iou": 0.6555,
+    "classification_accuracy": 0.9615,
+    "mean_best_pair_iou": 0.5004,
+    "global_max_iou": 0.8386,
+    "detection_rate_by_iou": {
+      "0.1": 0.7879,
+      "0.3": 0.7576,
+      "0.5": 0.697
+    },
+    "scene_label_metrics": {
+      "high_density": {
+        "precision": 0.7041,
+        "recall": 0.8961,
+        "f1": 0.7886,
+        "tp": 69,
+        "fp": 29,
+        "fn": 8
+      }
+    },
+    "total_frames": 119,
+    "total_gt_hazards": 172,
+    "total_pred_hazards": 63,
+    "true_positives": 26,
+    "false_positives": 37,
+    "false_negatives": 146,
+    "true_negatives": 41,
+    "no_hazard_accuracy": 0.8913,
+    "per_class_metrics": {
+      "occluded_pedestrian": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 29
+      },
+      "jaywalking": {
+        "precision": 0.5098,
+        "recall": 0.2385,
+        "f1": 0.325,
+        "count": 109
+      },
+      "cyclist_proximity": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 14
+      },
+      "construction_zone": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 20
+      },
+      "high_density": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      },
+      "unusual_object": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      }
+    },
+    "confusion_matrix": {
+      "jaywalking": {
+        "jaywalking": 25,
+        "occluded_pedestrian": 1
+      }
+    },
+    "parse_failure_rate": 0.0,
+    "parse_failures": 0,
+    "n_frames": 119
+  }
+}

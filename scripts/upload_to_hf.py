@@ -10,7 +10,7 @@ Usage:
     python scripts/upload_to_hf.py \\
         --model-dir outputs/quantized_model \\
         --processor-dir outputs/merged_model \\
-        --examples-dir demo/examples \\
+        --examples-dir huggingface_space/examples \\
         --repo-id jayanth922/DriveSense-VLM
 
     # Or pass the token directly

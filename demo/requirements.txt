@@ -1,6 +1,0 @@
-gradio>=4.0
-transformers>=4.46
-torch
-accelerate>=0.34
-bitsandbytes>=0.46.1
-Pillow>=10.0

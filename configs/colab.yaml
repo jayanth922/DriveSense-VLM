@@ -15,7 +15,6 @@ colab:
 # ---------------------------------------------------------------------------
 paths:
   nuscenes_root: "/content/drive/MyDrive/DriveSense-VLM/data/nuscenes"
-  dada2000_root: "/content/drive/MyDrive/DriveSense-VLM/data/dada2000"
   output_dir: "/content/drive/MyDrive/DriveSense-VLM/outputs/data"
 
 # ---------------------------------------------------------------------------

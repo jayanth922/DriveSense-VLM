@@ -1,0 +1,131 @@
+{
+  "overall_fm": {
+    "recall": 0.1008,
+    "precision": 0.1761,
+    "f1": 0.1282,
+    "false_positive_rate": 0.488,
+    "mean_iou_matched": 0.6319,
+    "mean_best_pair_iou": 0.2445,
+    "frame_detect_at_0.5": 0.2657,
+    "no_hazard_accuracy": 0.512,
+    "classification_accuracy": 0.9615
+  },
+  "overall_gt": {
+    "recall": 0.1667,
+    "precision": 0.3299,
+    "f1": 0.2215,
+    "false_positive_rate": 0.1694,
+    "mean_iou_matched": 0.641,
+    "mean_best_pair_iou": 0.4579,
+    "frame_detect_at_0.5": 0.566,
+    "no_hazard_accuracy": 0.8306,
+    "classification_accuracy": 0.9535
+  },
+  "stratified_fm": {
+    "day": 0.1296,
+    "night": 0.0,
+    "clear": 0.127,
+    "rain": 0.0,
+    "day_night_gap": 0.1296
+  },
+  "stratified_gt": {
+    "day": 0.1711,
+    "night": 0.1512,
+    "clear": 0.1971,
+    "rain": 0.05,
+    "day_night_gap": 0.0199
+  },
+  "table": [
+    {
+      "metric": "Recall (detection rate)",
+      "fm": 0.1008,
+      "gt": 0.1667,
+      "delta_gt_minus_fm": 0.0659,
+      "better": "high"
+    },
+    {
+      "metric": "Precision",
+      "fm": 0.1761,
+      "gt": 0.3299,
+      "delta_gt_minus_fm": 0.1538,
+      "better": "high"
+    },
+    {
+      "metric": "F1",
+      "fm": 0.1282,
+      "gt": 0.2215,
+      "delta_gt_minus_fm": 0.0933,
+      "better": "high"
+    },
+    {
+      "metric": "False-positive rate",
+      "fm": 0.488,
+      "gt": 0.1694,
+      "delta_gt_minus_fm": -0.3186,
+      "better": "low"
+    },
+    {
+      "metric": "Mean best-pair IoU",
+      "fm": 0.2445,
+      "gt": 0.4579,
+      "delta_gt_minus_fm": 0.2134,
+      "better": "high"
+    },
+    {
+      "metric": "Frame detect @IoU 0.5",
+      "fm": 0.2657,
+      "gt": 0.566,
+      "delta_gt_minus_fm": 0.3003,
+      "better": "high"
+    },
+    {
+      "metric": "No-hazard accuracy",
+      "fm": 0.512,
+      "gt": 0.8306,
+      "delta_gt_minus_fm": 0.3186,
+      "better": "high"
+    },
+    {
+      "metric": "Mean IoU (matched)",
+      "fm": 0.6319,
+      "gt": 0.641,
+      "delta_gt_minus_fm": 0.0091,
+      "better": "high"
+    },
+    {
+      "metric": "Label accuracy (matched)",
+      "fm": 0.9615,
+      "gt": 0.9535,
+      "delta_gt_minus_fm": -0.008,
+      "better": "high"
+    },
+    {
+      "metric": "Detect [day]",
+      "fm": 0.1296,
+      "gt": 0.1711,
+      "delta_gt_minus_fm": 0.0415,
+      "better": "high"
+    },
+    {
+      "metric": "Detect [night]",
+      "fm": 0.0,
+      "gt": 0.1512,
+      "delta_gt_minus_fm": 0.1512,
+      "better": "high"
+    },
+    {
+      "metric": "Detect [clear]",
+      "fm": 0.127,
+      "gt": 0.1971,
+      "delta_gt_minus_fm": 0.0701,
+      "better": "high"
+    },
+    {
+      "metric": "Detect [rain]",
+      "fm": 0.0,
+      "gt": 0.05,
+      "delta_gt_minus_fm": 0.05,
+      "better": "high"
+    }
+  ]
+}

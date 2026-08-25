@@ -31,9 +31,11 @@ guessing at one, and a small MLOps layer (a metrics registry, a regression gate,
 whole thing together.
 
 Every detection number below traces to [`results/metrics_registry.json`](results/metrics_registry.json);
-every inference number traces to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md),
+every inference number traces to [`INFERENCE_OPTIMIZATION.md` §7](docs/INFERENCE_OPTIMIZATION.md),
 reproducible with [`scripts/inference_benchmark.py`](scripts/inference_benchmark.py); Task 3's
-numbers trace to [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md) and are reproducible with
+numbers trace to the committed eval output at
+[`results/task3_deconfound/`](results/task3_deconfound/) (full write-up in
+[`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md)) and are reproducible with
 [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md).
 
 ---
@@ -44,11 +46,11 @@ The v3→v4 flywheel turn added 1,442 targeted rain/night frames and, at the sam
 those frames' boxes from GT-projected to foundation-model-emitted — two changes at once, so the
 resulting regression on rain/night/tiny buckets couldn't be attributed to either one cleanly (see
 [`FLYWHEEL_V4_FINDINGS.md` § Label-provenance
-confound](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment)). Task 3 isolates
+confound](docs/FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment)). Task 3 isolates
 box provenance directly: two LoRA arms sharing an identical base/val/test set and an identical set
 of targeted frame ids, differing only in whether the targeted boxes are FM-emitted or
 GT-projected. Full write-up, per-condition breakdown, and limitations are in
-[`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md); the headline is below.
+[`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md); the headline is below.
 
 The original v3/v4 per-frame training data did not survive, so this is a faithful reconstruction
 of the experiment design at reduced scale (base 2,652 frames, targeted 1,162, test 402 of the
@@ -57,14 +59,14 @@ the finding, not the absolute recall numbers.
 
 | metric | FM | GT |
 |---|---|---|
-| Recall (detection rate) | 0.101 | 0.168 |
-| Precision | 0.176 | 0.333 |
-| F1 | 0.128 | 0.223 |
+| Recall (detection rate) | 0.101 | 0.167 |
+| Precision | 0.176 | 0.330 |
+| F1 | 0.128 | 0.222 |
 | False-positive rate (lower is better) | 0.488 | 0.169 |
-| Mean best-pair IoU | 0.245 | 0.458 |
+| Mean best-pair IoU | 0.244 | 0.458 |
 | Frame detect @ IoU 0.5 | 0.266 | 0.566 |
 | No-hazard accuracy | 0.512 | 0.831 |
-| Mean IoU (matched) | 0.631 | 0.640 |
+| Mean IoU (matched) | 0.632 | 0.641 |
 | Label accuracy (matched) | 0.962 | 0.954 |
 
 GT-projected boxes win on every axis except matched-class label accuracy, where the two arms are
@@ -73,11 +75,13 @@ called once drawn. The effect is largest exactly where it matters most: the FM a
 nothing at all at night (0.000 vs GT's 0.151) or in rain (0.000 vs GT's 0.050, and every FM box
 it does draw in rain is wrong). Box-supervision provenance was a real, previously-confounded
 driver of the v4 regression, not a minor detail. Limitations — reduced scale, a small rain bucket
-(104 frames), single seed — are stated in full in [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).
+(104 frames), single seed — are stated in full in [`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md).
 
-Reproduce with [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md), which walks phases 0–7 (nuScenes
-reconstruction, GT-describe, FM-label, arm assembly, training, evaluation) with a cost gate and a
-$0 mock dry-run before any real spend.
+The raw eval output backing this table is committed at
+[`results/task3_deconfound/`](results/task3_deconfound/) (`results_fm/`, `results_gt/`,
+`deconfound_result.json`) — reproduce with [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md), which
+walks phases 0–7 (nuScenes reconstruction, GT-describe, FM-label, arm assembly, training,
+evaluation) with a cost gate and a $0 mock dry-run before any real spend.
 
 ---
 
@@ -128,8 +132,8 @@ v3 scaled data naively (2.7k→7.2k train examples) and generalization suffered 
 buckets regressed further. The regression gate blocked the v4 candidate and v3 stayed the
 production model. Task 3 above is the follow-up that separates how much of that regression was
 the targeting versus the box-provenance shift riding along with it. See
-[`DEBUGGING_POSTMORTEM.md`](DEBUGGING_POSTMORTEM.md), [`FLYWHEEL.md`](FLYWHEEL.md),
-[`FLYWHEEL_V4_FINDINGS.md`](FLYWHEEL_V4_FINDINGS.md), and the generated
+[`DEBUGGING_POSTMORTEM.md`](docs/DEBUGGING_POSTMORTEM.md), [`FLYWHEEL.md`](docs/FLYWHEEL.md),
+[`FLYWHEEL_V4_FINDINGS.md`](docs/FLYWHEEL_V4_FINDINGS.md), and the generated
 [`results/mlops_report.md`](results/mlops_report.md).
 
 ### Inference (single T4, 16 GB, 320 GB/s HBM)
@@ -154,7 +158,7 @@ End-to-end latency is seconds per image (11.6 s fp16 / 9.8 s with prompt-lookup)
 autoregressive VLM benchmarked as a compression/throughput story, not a real-time claim.
 
 Full diagnosis (roofline, quality gate, percentiles) is in
-[`INFERENCE_OPTIMIZATION.md`](INFERENCE_OPTIMIZATION.md).
+[`INFERENCE_OPTIMIZATION.md`](docs/INFERENCE_OPTIMIZATION.md).
 
 ### Limitations
 
@@ -202,7 +206,7 @@ python -m pytest tests/ -v                       # test suite, no GPU or downloa
 ```
 
 A full training + eval run needs a GPU (Colab or RunPod) — see the runbooks under `notebooks/`
-and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
+or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
 
 ---
 
@@ -211,13 +215,13 @@ and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specif
 | Path | What it is |
 |---|---|
 | `README.md` | This file — status, results, what's left |
-| `TASK3_DECONFOUND.md` | Task 3 box-provenance ablation: full write-up, per-condition table, limitations |
+| `docs/TASK3_DECONFOUND.md` | Task 3 box-provenance ablation: full write-up, per-condition table, limitations |
 | `deconfound/` | Task 3 pipeline — reconstruction, arm assembly, training config, comparison, `RUNBOOK.md` |
-| `FLYWHEEL.md` | The mine → label → gate → train → eval → gate loop, stage by stage |
-| `FLYWHEEL_V4_FINDINGS.md` | The v3→v4 turn in full: what was mined, what regressed, why |
-| `DEBUGGING_POSTMORTEM.md` | Failures diagnosed: the coordinate bug, naive scaling, targeted scaling |
-| `INFERENCE_OPTIMIZATION.md` | Bottleneck-driven inference study; §7 is the measured T4 results |
-| `MODEL_CARD.md` / `hf_model_card/` | Model cards (repo-facing and HuggingFace-facing) |
+| `docs/FLYWHEEL.md` | The mine → label → gate → train → eval → gate loop, stage by stage |
+| `docs/FLYWHEEL_V4_FINDINGS.md` | The v3→v4 turn in full: what was mined, what regressed, why |
+| `docs/DEBUGGING_POSTMORTEM.md` | Failures diagnosed: the coordinate bug, naive scaling, targeted scaling |
+| `docs/INFERENCE_OPTIMIZATION.md` | Bottleneck-driven inference study; §7 is the measured T4 results |
+| `docs/MODEL_CARD.md` / `hf_model_card/` | Model cards (repo-facing and HuggingFace-facing) |
 | `results/metrics_registry.json` | Source of truth for v2/v3/v4 metrics and the gate policy |
 | `results/mlops_report.md` | Generated v2→v3→v4 comparison and gate verdict |
 | `mlops_report.py` | Builds the report; `--gate` exits non-zero on regression (used in CI) |
@@ -226,12 +230,11 @@ and `slurm/README.md`, or `deconfound/RUNBOOK.md` for the Task 3 ablation specif
 | `scripts/` | Pipeline CLIs: filter, annotate, train, evaluate, mine, gate, ship |
 | `src/drivesense/` | Library: `data/`, `training/`, `eval/`, `inference/`, `monitoring/` |
 | `src/drivesense/data/spark_pipeline.py` | Distributed PySpark rarity-scoring + analytics ETL |
-| `docs/` | Deep dives: observability, closed-loop mining, AV2 integration, TensorRT runbook |
+| `docs/` | Deep dives: observability, closed-loop mining, TensorRT runbook |
 | `configs/*.yaml` | All hyperparameters and paths — never hardcoded in source |
 | `tests/` | CPU-only, mock-backed test suite — no GPU, downloads, or API keys |
-| `demo/` | Gradio app for HuggingFace Spaces (T4, NF4) |
+| `huggingface_space/` | Gradio app deployed to HuggingFace Spaces (T4, NF4) |
 | `notebooks/` | Colab execution notebooks (data → training → optimization → eval) |
-| `slurm/` | HPC job scripts (alternative to Colab) |
 | `.github/workflows/ci.yml` | Tests, mock pipeline smoke, and the regression gate |
 
 ---
@@ -243,7 +246,7 @@ caveats (see `INFERENCE_OPTIMIZATION.md` §7), the TensorRT ViT runbook executed
 with a negative result (`torch.export` fails on Qwen2.5-VL's data-dependent window attention, so
 TensorRT isn't viable for this ViT; the deployed latency lever stays fp16 + prompt-lookup, see
 `docs/TENSORRT_RUNBOOK.md` §6), and Task 3's box-provenance A/B ran end to end on an H100 — see
-the result table above and [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).
+the result table above and [`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md).
 
 Future work, none blocking:
 
@@ -280,7 +283,7 @@ Future work, none blocking:
 python -m pytest tests/ -v
 ```
 
-The suite (652 tests, 648 pass / 4 skip without a GPU) is CPU-only and mock-backed — no GPU,
+The suite (587 tests, 583 pass / 4 skip without a GPU) is CPU-only and mock-backed — no GPU,
 model downloads, or API keys required.
 
 ---

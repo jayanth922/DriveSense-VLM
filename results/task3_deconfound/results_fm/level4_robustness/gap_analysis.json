@@ -1,0 +1,8 @@
+{
+  "day_night_detection_rate_gap": 0.1296,
+  "weather_detection_rate_gap": 0.127,
+  "location_detection_rate_gap": 0.0,
+  "source_detection_rate_gap": 0.0,
+  "speed_detection_rate_gap": 0.0,
+  "ood_relative_performance": 0.0
+}

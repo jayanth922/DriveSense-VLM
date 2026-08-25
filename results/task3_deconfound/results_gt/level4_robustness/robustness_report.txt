@@ -1,0 +1,31 @@
+DriveSense-VLM — Level 4: Robustness
+====================================================
+
+Performance Gaps (detection rate)
+  Day/Night:    2.0%     target <10.0%   [PASS]
+  Weather:      14.7%    target <15.0%   [PASS]
+  Location:     0.0%     target <10.0%   [PASS]
+  Speed bucket: 0.0%    
+
+Out-of-Distribution (DADA-2000 vs nuScenes)
+  OOD ratio:    0.000     target >=0.70   [FAIL]
+
+By Time of Day:
+  day              DR=0.171  n=283
+  night            DR=0.151  n=119
+
+By Weather:
+  rain             DR=0.050  n=104
+  clear            DR=0.197  n=298
+
+By Location:
+  unknown          DR=0.167  n=402
+
+By Speed:
+  0-20             DR=0.167  n=402
+
+By Source:
+  nuscenes         DR=0.167  n=402
+
+====================================================
+Overall: ONE OR MORE TARGETS MISSED

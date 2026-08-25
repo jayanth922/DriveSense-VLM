@@ -1,0 +1,95 @@
+{
+  "unknown": {
+    "iou_at_threshold": 0.1245,
+    "hazard_detection_rate": 0.1667,
+    "false_positive_rate": 0.1694,
+    "precision": 0.3299,
+    "f1_score": 0.2215,
+    "mean_iou": 0.641,
+    "classification_accuracy": 0.9535,
+    "mean_best_pair_iou": 0.4579,
+    "global_max_iou": 0.892,
+    "detection_rate_by_iou": {
+      "0.1": 0.7925,
+      "0.3": 0.7421,
+      "0.5": 0.566
+    },
+    "scene_label_metrics": {
+      "high_density": {
+        "precision": 0.8199,
+        "recall": 0.9591,
+        "f1": 0.8841,
+        "tp": 305,
+        "fp": 67,
+        "fn": 13
+      }
+    },
+    "total_frames": 402,
+    "total_gt_hazards": 766,
+    "total_pred_hazards": 391,
+    "true_positives": 129,
+    "false_positives": 262,
+    "false_negatives": 645,
+    "true_negatives": 103,
+    "no_hazard_accuracy": 0.8306,
+    "per_class_metrics": {
+      "occluded_pedestrian": {
+        "precision": 0.375,
+        "recall": 0.0345,
+        "f1": 0.0632,
+        "count": 87
+      },
+      "jaywalking": {
+        "precision": 0.4607,
+        "recall": 0.3004,
+        "f1": 0.3636,
+        "count": 273
+      },
+      "cyclist_proximity": {
+        "precision": 0.625,
+        "recall": 0.0442,
+        "f1": 0.0826,
+        "count": 113
+      },
+      "construction_zone": {
+        "precision": 0.1939,
+        "recall": 0.1288,
+        "f1": 0.1548,
+        "count": 295
+      },
+      "high_density": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "count": 0
+      },
+      "unusual_object": {
+        "precision": 1.0,
+        "recall": 0.1667,
+        "f1": 0.2857,
+        "count": 6
+      }
+    },
+    "confusion_matrix": {
+      "jaywalking": {
+        "jaywalking": 80,
+        "occluded_pedestrian": 2
+      },
+      "cyclist_proximity": {
+        "cyclist_proximity": 5
+      },
+      "construction_zone": {
+        "construction_zone": 38
+      },
+      "unusual_object": {
+        "construction_zone": 1
+      },
+      "occluded_pedestrian": {
+        "jaywalking": 3
+      }
+    },
+    "parse_failure_rate": 0.005,
+    "parse_failures": 2,
+    "n_frames": 402
+  }
+}

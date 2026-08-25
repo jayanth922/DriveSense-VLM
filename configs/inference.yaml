@@ -61,4 +61,4 @@ demo:
   share: false                        # HF Spaces handles public access; don't use ngrok
   server_port: 7860
   max_image_size: [672, 448]          # [width, height] — resize inputs to this
-  example_images_dir: "demo/examples"
+  example_images_dir: "huggingface_space/examples"

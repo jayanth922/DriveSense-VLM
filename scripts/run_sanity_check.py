@@ -49,7 +49,6 @@ MODULES_TO_CHECK = [
     "drivesense",
     "drivesense.data",
     "drivesense.data.nuscenes_loader",
-    "drivesense.data.dada_loader",
     "drivesense.data.annotation",
     "drivesense.data.dataset",
     "drivesense.data.transforms",
@@ -118,12 +117,10 @@ EXPECTED_PATHS = [
     "src/drivesense/eval/",
     "src/drivesense/utils/",
     "scripts/",
-    "slurm/",
     "notebooks/",
-    "demo/",
     "tests/",
     "README.md",
-    "MODEL_CARD.md",
+    "docs/MODEL_CARD.md",
     "CLAUDE.md",
     "pyproject.toml",
     ".gitignore",
@@ -147,9 +144,8 @@ for rel_path in EXPECTED_PATHS:
 
 EXISTENCE_CHECKS: list[tuple[str, str]] = [
     ("drivesense.data.nuscenes_loader", "NuScenesRarityFilter"),
-    ("drivesense.data.dada_loader", "DADA2000Loader"),
     ("drivesense.data.annotation", "LLMAnnotationPipeline"),
-    ("drivesense.data.dataset", "DriveSenseDataset"),
+    ("drivesense.data.dataset", "UnifiedDatasetBuilder"),
     ("drivesense.training.sft_trainer", "train"),
     ("drivesense.eval.grounding", "compute_iou"),
     ("drivesense.eval.production", "ProductionEvaluator"),
@@ -180,7 +176,7 @@ try:
 except FileNotFoundError:
     check("README has results table", False, "README.md not found")
 
-model_card_path = PROJECT_ROOT / "MODEL_CARD.md"
+model_card_path = PROJECT_ROOT / "docs" / "MODEL_CARD.md"
 try:
     mc_text = model_card_path.read_text(encoding="utf-8")
     has_frontmatter = mc_text.startswith("---")
@@ -188,24 +184,6 @@ try:
           "" if has_frontmatter else "Missing --- frontmatter")
 except FileNotFoundError:
     check("MODEL_CARD.md has YAML frontmatter", False, "MODEL_CARD.md not found")
-
-# ── 6. Demo import check ───────────────────────────────────────────────────────
-
-demo_path = PROJECT_ROOT / "demo"
-if str(demo_path) not in sys.path:
-    sys.path.insert(0, str(demo_path))
-try:
-    spec = importlib.util.spec_from_file_location("app", demo_path / "app.py")
-    if spec is None or spec.loader is None:
-        check("import demo/app.py", False, "Cannot find demo/app.py")
-    else:
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        check("import demo/app.py", True)
-except FileNotFoundError:
-    check("import demo/app.py", False, "demo/app.py not found")
-except Exception as exc:  # noqa: BLE001
-    check("import demo/app.py", False, str(exc))
 
 # ── 8. Package Version Check ───────────────────────────────────────────────────
 try:

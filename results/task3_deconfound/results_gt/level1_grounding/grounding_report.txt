@@ -1,0 +1,46 @@
+==============================================================
+  DriveSense-VLM — Level 1 Grounding Evaluation Report
+==============================================================
+
+  Detection Metrics
+  ----------------------------------------
+  Recall (Hazard Detection Rate) : 0.1667
+  Precision                      : 0.3299
+  F1 Score                       : 0.2215
+  IoU @ Threshold (Jaccard)      : 0.1245
+  Mean IoU (matched pairs)       : 0.6410
+
+  Localization (threshold-independent)
+  ----------------------------------------
+  Mean best-pair IoU             : 0.4579
+  Max IoU (any pair, whole set)  : 0.8920
+  Frame detect rate @IoU 0.1/0.3/0.5: 0.792 / 0.742 / 0.566
+
+  Classification
+  ----------------------------------------
+  Label Accuracy (matched)       : 0.9535
+  No-Hazard Frame Accuracy       : 0.8306
+  False Positive Rate            : 0.1694
+
+  Severity
+  ----------------------------------------
+  Severity Accuracy (exact)      : 0.3721
+  Severity Within ±1             : 1.0000
+  Severity Spearman ρ            : 0.0000
+
+  Counts
+  ----------------------------------------
+  Total Frames                   : 402
+  GT Hazards / Pred Hazards      : 766 / 391
+  TP / FP / FN / TN              : 129 / 262 / 645 / 103
+  Parse Failures                 : 2 (0.5%)
+
+  Per-Class Metrics (F1 / Precision / Recall / n)
+  ----------------------------------------
+  occluded_pedestrian             F1=0.063  P=0.375  R=0.035  n=87
+  jaywalking                      F1=0.364  P=0.461  R=0.300  n=273
+  cyclist_proximity               F1=0.083  P=0.625  R=0.044  n=113
+  construction_zone               F1=0.155  P=0.194  R=0.129  n=295
+  unusual_object                  F1=0.286  P=1.000  R=0.167  n=6
+
+==============================================================

@@ -36,20 +36,17 @@ canonical list; do not duplicate it elsewhere).
 - **Prediction generator**: `scripts/run_generate_predictions.py` — standalone inference script
 - **Eval outputs**: `outputs/eval/level1/` and `outputs/eval/level2/` — JSON + text reports
 - **Predictions output**: `outputs/predictions/test_predictions.jsonl` — raw + parsed model outputs
-- **SLURM job**: `slurm/train.sbatch` — HPC job submission for Phase 2a
 - **LoRA merger**: `src/drivesense/inference/merge_lora.py` — Phase 3a: LoRAMerger, merge_lora_checkpoint, verify_merge
 - **TensorRT ViT**: `src/drivesense/inference/tensorrt_vit.py` — Phase 3b: ViTExtractor, _ViTWrapper, export_to_onnx, compile_tensorrt, benchmark_vit, full_pipeline
 - **Optimization CLI**: `scripts/run_optimize_model.py` — Phase 3a+3b entry point (--all, --merge, --quantize, --tensorrt, --mock)
-- **Optimization SLURM**: `slurm/optimize.sbatch` — HPC job for full optimization pipeline
 - **Merged model output**: `outputs/merged_model/` — full-weight .safetensors + processor
 - **Quantized model output**: `outputs/quantized_model/` — legacy 4-bit weights + quant_config.json (not used in v2)
 - **Serving layer**: `src/drivesense/inference/serve.py` — Phase 3c: DriveSenseVLLMServer (vLLM), DriveSenseLocalInference (transformers), draw_hazard_boxes, DRIVESENSE_SYSTEM_PROMPT, SEVERITY_COLORS
 - **Benchmark CLI**: `scripts/run_benchmark.py` — Phase 3c entry point (--local, --vllm, --vit-only, --mock, --output)
-- **Gradio demo**: `demo/app.py` — Phase 4a: create_demo(), analyze_image(), draw_hazard_boxes(), lazy model loading, HF Spaces T4 target
 - **Production evaluator**: `src/drivesense/eval/production.py` — Phase 4b: ProductionEvaluator, compute_production_metrics, load_benchmark_results, generate_report, benchmark_latency, run_production_benchmark
 - **Robustness evaluator**: `src/drivesense/eval/robustness.py` — Phase 4b: RobustnessEvaluator, stratify_predictions, compute_stratified_metrics, _extract_stratum_value, _compute_all_gaps, run_robustness_evaluation
 - **Full evaluation CLI**: `scripts/run_full_evaluation.py` — Phase 4b: --level 1 2 3 4, --mock, --generate-report; compile_final_report, box-drawing ASCII report (_WIDTH=66)
-- **Model card**: `MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
+- **Model card**: `docs/MODEL_CARD.md` — Phase 5: HuggingFace model card YAML frontmatter, all evaluation results, usage examples
 - **Regression comparison lib**: `src/drivesense/eval/regression.py` — DEFAULT_METRICS, get_metric (dotted-path, splits on FIRST `.` only — `"detection_rate_by_iou.0.1"`'s own key contains a dot), relative_change, evaluate_metric (tolerance-gated), verdict_label (not tolerance-gated), compare_summaries, build_comparison_rows
 - **CI regression gate**: `scripts/run_regression_gate.py` — fails (exit 1) if a new eval_summary.json regresses vs a baseline beyond tolerance; `--tolerance NAME=FLOAT` overrides, `--output` writes the JSON report
 - **Eval comparison report**: `scripts/compare_eval_runs.py` — `--run LABEL=PATH` (repeatable), `--format console|markdown`; side-by-side metrics + improved/regressed/flat verdict vs previous run
@@ -61,14 +58,7 @@ canonical list; do not duplicate it elsewhere).
 - **Mining targets lib**: `src/drivesense/data/mining_targets.py` — proxied_size_tier (distance_to_ego bands, NOT measured), infer_weather/infer_time_of_day (scene_description keywords, mirrors scene_meta()), score_frame, select_targets (drop-in shopping-list schema); `location` dimension is NOT derivable from metadata.jsonl — dropped with a warning
 - **Mining targets CLI**: `scripts/select_mining_targets.py` — takes the stratification report + global metadata.jsonl, writes a new mining_shoppinglist.jsonl targeting the worst bucket; run the miner with `--no-rebuild-list` after, or the implicit-rebuild default overwrites it
 - **Closed-loop docs**: `docs/CLOSED_LOOP.md` — analyze → select → mine → label → gate → train → eval design; honestly notes only the tooling was built/validated this session, not a full extra cycle
-- **AV2 box projection**: `src/drivesense/data/av2_box_projection.py` — Cuboid→2D bbox via AV2's own confirmed `PinholeCamera.project_ego_to_img` (not reimplemented); `cuboid_vertices_in_ego_frame` handles optional city→ego correction; no `av2` import required (duck-typed), fully synthetic-testable
-- **AV2 box sourcing**: `src/drivesense/data/av2_box_sourcing.py` — `AV2_TO_HAZARD_CLASS` taxonomy map (⚠️ best-effort, unverified against source — see docs/AV2_INTEGRATION.md), `av2_category_to_hazard`, `source_boxes_for_av2_frame` (mirrors box_sourcing.py, reuses `box_reject_reason`/`filter_frame_boxes`/`BOX_EXEMPT_LABELS` directly), `taxonomy_coverage`
-- **AV2 loader**: `src/drivesense/data/av2_loader.py` — `AV2LogReader` (log-IO; `list_timestamps`/`get_cuboids`/`get_ego_pose`/`get_image_path` raise `NotImplementedError` — dataloader method names unverified this session); `build_av2_sft_record` reuses `SFTDataFormatter.format_single_example` directly, so merge_sft_v2.py/run_label_validation.py/run_evaluation.py work unchanged on AV2 records (proven by tests, not just asserted) — caller must stamp `scene_token`/`split` before merge_sft_v2.py, matching nuScenes' own convention
-- **AV2 integration docs**: `docs/AV2_INTEGRATION.md` — confirmed-vs-assumed API research log, scoped explicitly as scaffolding pending real data (~1TB, not downloaded this session)
 - **TensorRT runbook**: `docs/TENSORRT_RUNBOOK.md` — Colab A100 execution plan for `tensorrt_vit.py` (already ViT-only scoped, not full-model); no real GPU TensorRT attempt is evidenced in repo history — the only prior "failure" artifact was a test-fixture leak (`tests/test_tensorrt.py::test_torch_compile_sentinel_path` wrote to the real `outputs/tensorrt/` instead of `tmp_path`; fixed). Decision points at each stage; honest fallback framing if ONNX/TRT export fails
-- **Demo requirements**: `demo/requirements.txt` — bitsandbytes, qwen-vl-utils, gradio (T4 NF4 demo)
-- **HF Spaces metadata**: `demo/README.md` — YAML frontmatter for HuggingFace Spaces
-- **Demo examples**: `demo/examples/` — placeholder directory for example dashcam images
 - **Benchmark output**: `outputs/benchmarks/` — per-run JSON benchmark results
 - **TensorRT output**: `outputs/tensorrt/` — vit.onnx, vit.engine, vit_benchmark.json, optimization_report.txt, fallback_info.json
 - **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
@@ -81,14 +71,13 @@ canonical list; do not duplicate it elsewhere).
 
 - **Configs**: `configs/*.yaml` — ALL hyperparameters live here, never hardcode values
 - **Source**: `src/drivesense/` — main Python package
-- **Scripts**: `scripts/` — download, HPC setup, sanity check
-- **SLURM jobs**: `slurm/*.sbatch` — HPC job submission scripts
+- **Scripts**: `scripts/` — download, sanity check
 - **Tests**: `tests/` — pytest test suite
 - **Streaming miner**: `src/drivesense/data/streaming_miner.py` — bounded-storage nuScenes blob image fetch (shopping list, stratified sample, streaming tar extract, resume manifest, auth resolution)
 - **Streaming miner CLI**: `scripts/run_streaming_miner.py` — `--dry-run`, `--build-list-only`, `--blob-dir`, `--blob-urls-file`; one blob at a time under a disk cap. Config in `configs/data.yaml` (`mining:`)
 - **Miner outputs**: `outputs/data/mining_shoppinglist.jsonl`, `mining_manifest.json` (resume), `mining_report.json`
-- **Unified dataset**: `src/drivesense/data/dataset.py` — UnifiedDatasetBuilder + DriveSenseDataset
-- **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder
+- **Unified dataset**: `src/drivesense/data/dataset.py` — `UnifiedDatasetBuilder` (nuScenes-only; the DADA-2000 second source was removed) + `DriveSenseDataset`
+- **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder, used by `notebooks/00_data_pipeline.ipynb` and `05_quick_start.ipynb`
 - **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files
 - **Filtering script**: `scripts/run_nuscenes_filter.py` — Phase 1a pipeline CLI
 - **Filtered output**: `outputs/data/nuscenes_filtered/` — images + metadata JSON
@@ -110,10 +99,8 @@ python scripts/run_spark_pipeline.py --version v1.0-mini
 python scripts/run_spark_pipeline.py --skip-extraction        # reuse existing JSONL
 python scripts/run_spark_pipeline.py --analytics-only         # analytics only
 
-
-# Phase 1b: Build unified dataset
+# Phase 1b: Build unified dataset (nuScenes-only)
 python scripts/run_build_unified_dataset.py
-python scripts/run_build_unified_dataset.py --nuscenes-only
 
 # Phase 1c: LLM annotation pipeline
 python scripts/run_annotation_pipeline.py --dry-run --mock-llm   # validate prompts, no API
@@ -123,16 +110,14 @@ python scripts/run_annotation_pipeline.py --format-only          # reformat exis
 
 # Phase 2a: SFT training
 python scripts/run_training.py --dry-run --mock                  # validate setup, no download
-python scripts/run_training.py --debug                            # 1 epoch / 10 steps (HPC sanity check)
+python scripts/run_training.py --debug                            # 1 epoch / 10 steps (quick sanity check)
 python scripts/run_training.py --config configs/training.yaml --resume   # full run + auto-resume
-sbatch slurm/train.sbatch                                         # submit to SLURM
 
 # Phase 2b: Evaluation
 python scripts/run_generate_predictions.py --mock                 # test inference pipeline (no download)
 python scripts/run_evaluation.py --level 1 --mock-judge           # Level 1 grounding (no API key)
 python scripts/run_evaluation.py --level 1 2 --mock-judge         # Level 1 + 2 (mock judge)
 python scripts/run_evaluation.py --generate-predictions --level 1 2   # full pipeline
-sbatch slurm/eval.sbatch                                          # submit eval to SLURM
 
 # Phase 3a+3b: Optimization
 python scripts/run_optimize_model.py --all --mock                 # test full pipeline (no GPU)
@@ -141,17 +126,14 @@ python scripts/run_optimize_model.py --quantize --merged-model outputs/merged_mo
 python scripts/run_optimize_model.py --tensorrt --model-dir outputs/merged_model
 python scripts/run_optimize_model.py --benchmark-vit --mock       # benchmark with mock data
 python scripts/run_optimize_model.py --benchmark-quality --mock
-sbatch slurm/optimize.sbatch                                      # submit full optimization to SLURM
 
 # Phase 3c: Inference benchmark
 python scripts/run_benchmark.py --mock                            # mock mode (no GPU)
 python scripts/run_benchmark.py --local                           # local transformers backend
-python scripts/run_benchmark.py --vllm                            # vLLM backend (HPC only)
+python scripts/run_benchmark.py --vllm                            # vLLM backend (GPU serving)
 python scripts/run_benchmark.py --vit-only                        # ViT-only throughput
-sbatch slurm/benchmark.sbatch                                     # submit full benchmark to SLURM
 
 # Phase 4a: Gradio demo
-python demo/app.py                                                # run locally (port 7860)
 
 # Phase 4b: Full 4-level evaluation
 python scripts/run_full_evaluation.py --mock                      # all levels (no GPU)
@@ -172,7 +154,6 @@ black src/
 |-------------|----------|-------|
 | Local (macOS Apple Silicon) | CPU only | No GPU packages; dev + data + eval deps only |
 | **Google Colab Pro** ($10/mo + extra CUs) | A100 80GB / T4 | Primary execution; notebooks 00–05 |
-| HPC (SJSU CoE) — alternative | A100 / H100, SLURM | `slurm/` scripts; see `slurm/README.md` |
 | Demo (HF Spaces) | Free T4 GPU | Gradio app; transformers inference only |
 
 ## Colab Execution
@@ -204,9 +185,9 @@ black src/
 | 0.5a | Project Scaffolding | ✅ Complete |
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
-| 1b | Critical-moment extraction (legacy, unused in v2) | ✅ Complete |
+| 1b | Unified dataset builder | ✅ Complete, nuScenes-only — the DADA-2000 second source was scaffolding never used past Phase 1 and has been removed |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
-| 2a | LoRA SFT training on HPC | ✅ Complete |
+| 2a | LoRA SFT training | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
 | 3a | LoRA merge + 4-bit quantization (legacy) | ✅ Complete |
 | 3b | TensorRT ViT compilation | ⚠️ Code complete, **never run on a GPU** — see `docs/TENSORRT_RUNBOOK.md`; no speedup is claimed |
@@ -222,7 +203,7 @@ black src/
    single source of truth for all hyperparameters and paths.
 2. **NEVER hardcode file paths** — use `configs/*.yaml` values accessed via `pathlib.Path`.
 3. **NEVER install GPU packages locally** — `torch`, `vllm`, `tensorrt`,
-   `bitsandbytes`, and `flash-attn` are HPC-only. Use `try/except ImportError` guards.
+   `bitsandbytes`, and `flash-attn` are GPU-only. Use `try/except ImportError` guards.
 4. **ALWAYS add type hints** to all function signatures (use `from __future__ import annotations`).
 5. **ALWAYS write tests** for new functionality in `tests/`.
 6. **ALWAYS update this CLAUDE.md** when completing a phase (update the Phase Tracker above).
@@ -263,8 +244,11 @@ black src/
 - Spark schemas are always **explicit** (`StructType`) — never use `inferSchema`.
 - `filter_by_threshold()` raises `RuntimeError` if `compute_all_scores()` was not called first.
 - Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
-- `UnifiedDatasetBuilder` (legacy) merged multiple sources into train/val/test splits; the v2 pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
-- `DriveSenseDataset(manifest_path, split, config, processor)` takes the per-split manifest JSONL; `get_collate_fn()` returns `collate_fn` which batches images as a list (not tensored — VLM processor handles padding).
+- The v2+ SFT pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
+  `UnifiedDatasetBuilder` (`dataset.py`, driven by `scripts/run_build_unified_dataset.py`) still
+  builds the Phase-1b nuScenes split manifest used by `00_data_pipeline.ipynb` /
+  `05_quick_start.ipynb`; its DADA-2000 second-source loader (`dada_loader.py`,
+  `run_dada_extraction.py`) was scaffolding never used past Phase 1 and has been removed.
 - `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
 - **Annotation pipeline** (`annotation.py`): `AnnotationPromptBuilder` loads templates from
   `prompts/*.txt` and `counterfactual_scenarios.json`; `AnnotationValidator` validates + fixes
@@ -289,13 +273,11 @@ black src/
 - **LoRA merge** (`merge_lora.py`): `LoRAMerger` loads base model in bfloat16, wraps with `PeftModel.from_pretrained`, calls `merge_and_unload()`, saves as .safetensors. `get_merge_stats` computes MD5 of config.json for reproducibility. `verify_merge` compares logits from adapter vs merged model with `torch.allclose(atol=1e-3)`. Merge MUST happen before quantization.
 - **TensorRT ViT** (`tensorrt_vit.py`): `ViTExtractor` locates vision encoder at `model.visual` (or first child with "visual"/"vit" in name). `_ViTWrapper` accepts standard [B,C,H,W] input, provides fixed `grid_thw=[[1,16,24]]` for 672×448 images (28×28 patches → 16h×24w=384 patches). ONNX export: opset_version=17, no dynamic axes; falls back to `torch.jit.trace` on custom-op failure. TRT compilation: FP16, fixed workspace; falls back to `torch.compile(mode="reduce-overhead")` if TRT unavailable. All fallbacks documented in `fallback_info.json`. Benchmark measures mean/p50/p95/p99 latency + throughput with CUDA synchronization.
 - **Optimization CLI** (`run_optimize_model.py`): `--all` runs merge→quantize→TensorRT sequentially; each stage is idempotent (skips if sentinel file exists). `--mock` creates stub output files without loading any models — used in tests and CI.
-- **Serving layer** (`serve.py`): `DRIVESENSE_SYSTEM_PROMPT` and `SEVERITY_COLORS` are module-level constants shared between serve.py and demo/app.py. `DriveSenseVLLMServer` loads the served model via `LLM(trust_remote_code=True)`; `predict_batch` uses `SamplingParams(temperature=0, stop=["<|im_end|>"])`; `benchmark()` uses `ThreadPoolExecutor` for concurrent load. `DriveSenseLocalInference` is lazy-loaded (model=None at init); `_run_inference` uses `apply_chat_template` + `do_sample=False`; both quantized and full-precision models work.
+- **Serving layer** (`serve.py`): `DRIVESENSE_SYSTEM_PROMPT` and `SEVERITY_COLORS` are module-level constants used by serve.py. `DriveSenseVLLMServer` loads the served model via `LLM(trust_remote_code=True)`; `predict_batch` uses `SamplingParams(temperature=0, stop=["<|im_end|>"])`; `benchmark()` uses `ThreadPoolExecutor` for concurrent load. `DriveSenseLocalInference` is lazy-loaded (model=None at init); `_run_inference` uses `apply_chat_template` + `do_sample=False`; both quantized and full-precision models work.
 - **`draw_hazard_boxes`** (`serve.py`): Creates RGBA overlay image, fills each bbox with `alpha=50` (~20% opacity), solid `alpha=255` outline; label `"{label} ({severity})"` drawn 18px above box. Uses `Image.alpha_composite` then converts back to RGB. Falls back gracefully if PIL unavailable.
-- **bbox normalisation**: bbox coordinates in [0, 1000] → pixel: `x = bbox_x * w / 1000`. Same formula in both serve.py and demo/app.py (demo has standalone `draw_hazard_boxes` for Spaces compatibility).
+- **bbox normalisation**: bbox coordinates in [0, 1000] → pixel: `x = bbox_x * w / 1000`. Same formula used in serve.py.
 - **`_parse_json_output`** (`serve.py`): 3-stage parse: direct JSON → strip markdown fences → regex extract `{...}`. Returns `{"parse_failure": raw, "hazards": []}` on total failure.
 - **Benchmark CLI** (`run_benchmark.py`): `--local` times `DriveSenseLocalInference.predict()` sequentially; `--vllm` delegates to `server.benchmark()` (concurrent); `--vit-only` delegates to `ViTExtractor.benchmark_vit()`; `--mock` returns pre-baked numbers. Output timestamped to `outputs/benchmarks/benchmark_<ts>.json`. Synthetic images (solid colour) used when no `--image-dir` supplied.
 - **Production evaluator** (`production.py`): `ProductionEvaluator` reads all thresholds from `config["production"]["targets"]`. `load_benchmark_results(dir)` reads `local_bench.json` (→ T4 metrics) and `vllm_bench.json` (→ A100 metrics). ViT benchmark is optional: when None, `vit_tensorrt_p50_ms=None` and `vit_latency` target passes (True). Latency target is strict less-than (`p50 < target`, so equal fails). `quant_degradation_pct` derived from `label_agreement` field: `(1 - label_agreement) * 100`. `_get_p50(d)` tries `p50_ms` then falls back to `mean_ms`.
 - **Robustness evaluator** (`robustness.py`): Stratifies by `time_of_day`, `weather`, `location`, `ego_speed_bucket`, `source`. `_extract_stratum_value(gt_record, key)` checks three locations: `metadata{}` → `ego_context{}` → top-level → "unknown". `_speed_bucket(speed_kmh)`: < 20 → "0-20", < 40 → "20-40", else "40+". `_infer_source(frame_id)`: OOD-source prefix → OOD bucket else in-distribution. `_detection_rate_gap(stratum)`: max(DR) - min(DR) for groups with n_frames > 0. Empty groups handled via `contextlib.suppress` → `_empty_group_metrics()` (returns zeros). `ood_relative_performance` = ood_DR / in_dist_DR (None-safe).
 - **Full evaluation CLI** (`run_full_evaluation.py`): `--level 1 2 3 4` selects which levels to run; `--mock` bypasses real model inference for all levels; `--mock-judge` uses MockLLMJudge for Level 2. Box-drawing report uses `_WIDTH=66`, `_row()` pads to exact width, `_bar()` for horizontal lines. `_mock_level3_metrics()`: T4 p50=432ms, A100 p50=187ms, VIT=21ms, fps=9.2, VRAM=3.1GB, deg=1.3%. `_mock_level4_metrics()`: day/night gap=0.072, weather=0.118, location=0.054, OOD=(mock). Level 3 reads stored JSON files (idempotent — no live GPU benchmark).
-- **Gradio demo** (`demo/app.py`): `create_demo()` builds the `gr.Blocks` interface; `analyze_image()` calls `model.predict_with_visualization()`; returns `(annotated_image, json_str, latency_str)`. `_load_model()` is a global lazy-loader — safe under Gradio's single-threaded default mode. Config loaded from `configs/inference.yaml` if present, else `MODEL_PATH` env var. `demo/app.py` has standalone `draw_hazard_boxes` that mirrors `serve.py` for Spaces compatibility (no package install needed).
-- **HF Spaces**: `demo/README.md` has YAML frontmatter (`sdk: gradio`, `app_file: app.py`, hardware T4). `demo/requirements.txt` includes `bitsandbytes` and `qwen-vl-utils` for the NF4 demo.
