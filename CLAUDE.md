@@ -17,7 +17,7 @@ canonical list; do not duplicate it elsewhere).
 ## Architecture Decisions
 
 - **Model**: Qwen2.5-VL-3B-Instruct + LoRA (rank 32, alpha 64)
-- **Data**: nuScenes v1.0-trainval rare-hazard frames (~688; 549/72/67), bounding boxes projected from 3D ground truth
+- **Data**: nuScenes v1.0-trainval rare-hazard frames (v3: 7,228 train / 889 val / 1,041 test; v4: 8,670 train / 1,041 test), bounding boxes projected from 3D ground truth
 - **Output**: Structured JSON (`bbox_2d`, `hazard_class`, `severity`, `reasoning`, `action`)
 - **Inference**: bitsandbytes NF4 4-bit (T4 demo) + transformers. TensorRT ViT / vLLM / merge-quantize are legacy Phase-3 code, not used in the v2 nuScenes-only pipeline.
 - **Demo**: Gradio + transformers on HF Spaces free T4 GPU
@@ -190,7 +190,7 @@ black src/
 | 2a | LoRA SFT training | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
 | 3a | LoRA merge + 4-bit quantization (legacy) | ✅ Complete |
-| 3b | TensorRT ViT compilation | ⚠️ Code complete, **never run on a GPU** — see `docs/TENSORRT_RUNBOOK.md`; no speedup is claimed |
+| 3b | TensorRT ViT compilation | ⚠️ Ran on Kaggle T4 — `torch.export` fails on Qwen2.5-VL's data-dependent window attention; TensorRT not viable for this ViT. See `docs/TENSORRT_RUNBOOK.md` §6 |
 | 3c | vLLM production serving setup | ✅ Complete |
 | 3d | vLLM production serving | ✅ Complete |
 | 4a | Gradio demo on HF Spaces | ✅ Complete |
@@ -217,11 +217,17 @@ black src/
 
 ```json
 {
-  "bbox_2d": [x1, y1, x2, y2],
-  "hazard_class": "pedestrian_in_path | vehicle_cut_in | debris | ...",
-  "severity": 1,
-  "reasoning": "Chain-of-thought explanation...",
-  "action": "emergency_brake | yield | lane_change | maintain_speed"
+  "hazards": [
+    {
+      "label": "pedestrian_in_path | vehicle_cut_in | debris | ...",
+      "bbox_2d": [x1, y1, x2, y2],
+      "severity": 1,
+      "reasoning": "Chain-of-thought explanation...",
+      "action": "emergency_brake | yield | lane_change | maintain_speed"
+    }
+  ],
+  "scene_summary": "...",
+  "ego_context": { "weather": "...", "time_of_day": "...", "road_type": "..." }
 }
 ```
 
