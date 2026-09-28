@@ -14,7 +14,7 @@ training:
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 2
   # Effective batch size = per_device_train_batch_size * gradient_accumulation_steps
-  # = 8 * 2 = 16 examples per optimizer step (same effective batch, fewer accum micro-steps)
+  # = 4 * 4 = 16 examples per optimizer step
   gradient_accumulation_steps: 4
 
   # --- Optimizer ---
@@ -29,13 +29,13 @@ training:
 
   # --- Precision & Memory Efficiency ---
   bf16: true                          # bfloat16 on A100/H100 (no loss scaling needed)
-  gradient_checkpointing: true       # OFF: 3B + LoRA fits 80GB unchkpt'd (faster backward pass)
+  gradient_checkpointing: true       # ON: saves VRAM at the cost of slower backward pass
   dataloader_num_workers: 8           # feed the GPU (pod has 16 vCPU)
   dataloader_pin_memory: true
 
   # --- Checkpointing ---
   save_strategy: "epoch"              # Save checkpoint after each epoch
-  save_total_limit: 5                 # Keep only the 3 most recent checkpoints
+  save_total_limit: 5                 # Keep only the 5 most recent checkpoints
   load_best_model_at_end: true
   metric_for_best_model: "eval_loss"
 

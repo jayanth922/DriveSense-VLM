@@ -1,6 +1,6 @@
 # DriveSense-VLM — v4 Targeted-Flywheel Turn: Findings
 
-> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left-future-work).
+> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left).
 > Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
 
 
@@ -170,7 +170,7 @@ regression above.
 ## Suggested next steps (in priority order)
 
 The canonical, repo-wide list lives in the README's
-[What's left](../README.md#whats-left-future-work) section — not duplicated here. The two
+[What's left](../README.md#whats-left) section — not duplicated here. The two
 levers this turn's diagnosis points to specifically:
 
 1. **Ablation (cheap, isolates the top hypothesis):** retrain v4b with **zero `no_hazard`**

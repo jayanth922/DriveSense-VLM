@@ -1,7 +1,7 @@
 # TensorRT edge-deployment runbook + results (executed on Kaggle T4)
 
 > Part of **[DriveSense-VLM](../README.md)** — was item 2 of
-> [What's left](../README.md#whats-left-future-work).
+> [What's left](../README.md#whats-left).
 
 **Status: EXECUTED on a Kaggle T4 (2026-08-23). Result — TensorRT ViT export is NOT
 viable for Qwen2.5-VL, with a single named root cause (data-dependent window attention).
