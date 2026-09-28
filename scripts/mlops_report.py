@@ -11,12 +11,16 @@ Writes a markdown report and (with --gate) exits non-zero if the gate BLOCKs —
 fail a PR that regresses the weak buckets. No dependencies beyond the standard library.
 
 Usage:
-  python mlops_report.py                         # print report, always exit 0
-  python mlops_report.py --gate                  # exit 1 if the candidate regresses (for CI)
-  python mlops_report.py --candidate v4 --baseline v3 --out mlops_report.md
+  python scripts/mlops_report.py                 # print report, always exit 0
+  python scripts/mlops_report.py --gate          # exit 1 if candidate regresses (for CI)
+  python scripts/mlops_report.py --candidate v4 --baseline v3 --out mlops_report.md
 """
-import argparse, json, sys
+import argparse
+import json
+import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def tv_distance(a: dict, b: dict) -> float:
@@ -26,17 +30,23 @@ def tv_distance(a: dict, b: dict) -> float:
     return 0.5 * sum(abs(a.get(k, 0) / sa - b.get(k, 0) / sb) for k in keys)
 
 
-def fmt(x):
+def fmt(x: object) -> str:
     return "—" if x is None else (f"{x:.3f}" if isinstance(x, float) else str(x))
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--registry", default="results/metrics_registry.json")
+    ap.add_argument(
+        "--registry",
+        default=str(_REPO_ROOT / "results" / "metrics_registry.json"),
+    )
     ap.add_argument("--candidate", default="v4")
     ap.add_argument("--baseline", default=None, help="default: registry 'production'")
     ap.add_argument("--gate", action="store_true", help="exit 1 if candidate regresses")
-    ap.add_argument("--out", default="results/mlops_report.md")
+    ap.add_argument(
+        "--out",
+        default=str(_REPO_ROOT / "results" / "mlops_report.md"),
+    )
     a = ap.parse_args()
 
     reg = json.loads(Path(a.registry).read_text())

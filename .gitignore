@@ -190,7 +190,8 @@ urls*.json
 *.tgz
 
 # -----------------------------------------------------------------------------
-# Task 3 de-confound pipeline (deconfound/) — orchestration only, not a local run's
+# Task 3 de-confound pipeline (experiments/task3_deconfound/) — orchestration only,
+# not a local run's
 # raw working directory. Anchored to repo root (leading /) so these don't shadow
 # the real, committed copy at results/task3_deconfound/.
 # -----------------------------------------------------------------------------

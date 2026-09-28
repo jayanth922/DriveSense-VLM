@@ -1,168 +1,132 @@
-# DriveSense-VLM — Annotation Pipeline v2 (real boxes)
+# Annotation pipeline v2
 
-> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left).
-> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+[Back to the project README](../README.md)
 
+Annotation v2 replaced free-form box generation with boxes derived from nuScenes geometry. The
+change was made after the first label set collapsed around a few repeated coordinates.
 
-## Why v2 exists
+## Why v1 failed
 
-The v1 auto-annotation loop collapsed the model to constant output because the
-**training labels themselves had garbage boxes**. Measured on the generated
-label set: 780 full-frame `(0,0,1000,1000)` boxes, a center-blob
-`(400,300,600,700)` repeated 591×, and the top-5 boxes accounting for ~36% of
-4,933 hazards. The model faithfully learned to emit two constant boxes on every
-frame.
+The v1 labeler asked a foundation model to draw boxes directly. It produced:
 
-### Root cause (v1)
-Localization was outsourced to a foundation VLM with no grounding and no size
-constraint:
+- 780 full-frame boxes at `[0, 0, 1000, 1000]`;
+- 591 copies of `[400, 300, 600, 700]`;
+- about 36% of all 4,933 hazards concentrated in only five coordinate tuples.
 
-- `prompts/annotation_system.txt` — asks the VLM to "provide Precise bounding box
-  coordinates for each hazard" (free-form localization; VLMs default to
-  center/full-frame).
-- `prompts/annotation_user.txt:19` — **"If NO hazards are present, use label
-  `no_hazard` with bbox `[0, 0, 1000, 1000]`"** → manufactured every full-frame box.
-- `prompts/counterfactual_user.txt` — "Estimate WHERE this hazard would most
-  likely appear" → generic center-blob guesses.
-- `annotation.py::_validate_hazard` — validated 4-length / `[0,1000]` / ordering
-  only. **No area cap, no catch-all reject**, so a 100%-frame box was "valid".
-- `transforms.py::get_2d_bbox_from_3d` (tight nuScenes 3D→2D projection) existed
-  but was **never called**.
+The validator checked range and ordering but did not reject full-frame boxes, oversized boxes, or
+repeated defaults. The trained model reproduced the bad supervision by emitting nearly constant
+boxes.
 
-## v2 principle
+## v2 design
 
-**The VLM never localizes.** Boxes come from nuScenes GT geometry (or, later, a
-detector for true OOD). The VLM is demoted to *describe-only*: given a real box +
-image crop, it produces severity / reasoning / action. Labels come from the box
-source, not from the VLM.
+For v2, the foundation model describes hazards but does not localize them. Boxed labels follow this
+path:
 
-## Class → box source (data = nuScenes-only, CAM_FRONT)
+1. load the nuScenes 3D annotation;
+2. transform it into the front-camera coordinate frame;
+3. clip cuboid edges against the camera near plane;
+4. project the visible geometry into a 2D box;
+5. normalize the box to the 0-1000 output coordinate system;
+6. validate its area, aspect ratio, dimensions, and frame boundaries;
+7. ask Claude for severity, reasoning, and action text for the accepted box.
 
-| Class | v2 box source | Notes |
+`high_density` and `no_hazard` are scene-level labels and do not carry boxes.
+
+## Class mapping
+
+| DriveSense label | nuScenes source | Notes |
 |---|---|---|
-| occluded_pedestrian | GT projection | `human.pedestrian.*`, `visibility_level == 1` (0–40%) |
-| jaywalking | GT projection | `human.pedestrian.*` (non-occluded). **v1 descope:** no map/crosswalk gate — generic pedestrian-hazard box; describe-only VLM may refine. Map lane/ped-crossing logic is a **v2 stretch**. |
-| cyclist_proximity | GT projection | `vehicle.bicycle` / `vehicle.motorcycle` |
-| construction_zone | GT projection | `movable_object.barrier` / `movable_object.trafficcone` / `vehicle.construction` |
-| unusual_object | GT (debris) + detector (OOD) | `movable_object.debris` from GT; true OOD needs OWLv2/GroundingDINO (later) |
-| **high_density** | **NONE — scene-level, box-exempt** | Label emitted when the density signal fires (≥15 agents). **No bbox.** Excluded from IoU/box matching; contributes to classification / detection-presence only. |
-| no_hazard | NONE | **No box** (v1's full-frame box is deleted) |
+| `occluded_pedestrian` | `human.pedestrian.*` | `visibility_token == 1` |
+| `jaywalking` | `human.pedestrian.*` | non-occluded pedestrian; no map-based crossing test |
+| `cyclist_proximity` | `vehicle.bicycle`, `vehicle.motorcycle` | projected GT box |
+| `construction_zone` | barriers, traffic cones, construction vehicles | projected GT box |
+| `unusual_object` | `movable_object.debris` | broader open-world detection is not implemented |
+| `high_density` | frame-level density signal | no box; threshold is 15 agents |
+| `no_hazard` | no accepted hazard | empty hazard list |
 
-## Pipeline
+The `jaywalking` label should be read as a pedestrian-road hazard rather than a legal or map-aware
+crossing judgment. The current pipeline does not query crosswalk geometry.
 
+## Box filter
+
+The filter rejects a projected box if it:
+
+- covers more than 40% of the image;
+- has a side shorter than 1.5% of the image;
+- has an aspect ratio outside 0.15-8.0;
+- touches three or more frame edges;
+- is inverted or entirely outside the camera view.
+
+Every rejection is logged with a reason.
+
+## Dataset validation gate
+
+Run the gate before training:
+
+```bash
+python scripts/run_label_validation.py \
+  --input-dir outputs/data/sft_ready_v2
 ```
-nuScenes CAM_FRONT keyframe (rarity-selected)
-  │
-  ├─[A] BOX SOURCING (no VLM)
-  │     per annotation → nuscenes_category_to_hazard(category, visibility)
-  │        → get_2d_bbox_from_3d(nusc, ann_token, cam_token)  # tight GT box
-  │     high_density → scene-level label, NO box
-  │
-  ├─[B] HARD BOX FILTER (per frame, box classes only; logs every reject)
-  │     reject: area > 40% | degenerate (min side < 1.5%) |
-  │             aspect ∉ [0.15, 8] | catch-all (touches ≥3 frame edges)
-  │
-  ├─[C] VLM DESCRIBE-ONLY (per surviving box): severity/reasoning/action
-  │
-  └─[D] no_hazard frames → empty hazards list (no box)
-```
 
-## Schema change
+The command exits non-zero for schema errors or unhealthy box statistics. It checks unique-box
+ratio, most-common-box frequency, oversized boxes, box-exempt labels with coordinates, and repeated
+coordinates across frames. The repeated-coordinate limit scales with dataset size so that a real
+static object seen in adjacent keyframes does not fail a large dataset.
 
-`high_density` and `no_hazard` are **box-exempt**: a hazard object with one of
-these labels carries no `bbox_2d`. All other hazards must carry a filtered GT box.
+The v1 label set would fail the diversity, frequency, and oversized-box checks.
 
-## Validation gate (runs BEFORE any training)
+## Grounding evaluation
 
-`scripts/run_label_validation.py` — standalone; **exit 1** on any of:
+Boxed hazards enter IoU matching. `high_density` and `no_hazard` are removed from the box-matching
+pool and evaluated by frame-level presence instead. This prevents a scene-level condition from
+becoming a false positive or false negative solely because it has no coordinates.
 
-- `unique_box_ratio` (distinct boxes / total boxes) below threshold (default 0.5)
-- `max_single_box_freq` (most common box / total) above **2%**
-- any box with area **> 40%** of frame
-- `no_hazard`-with-box count **> 0**
-- (dataset-level) any single box shared across **> K** distinct frames
+## Regeneration command
 
-Box-exempt labels are excluded from the box statistics. Any one of the first
-three would have blocked the v1 dataset.
+`scripts/regenerate_annotations_v2_colab.py` handles curation, GT box sourcing, Batch API
+descriptions, SFT output, and validation. It supports a fixed mining shopping list and a per-frame
+cache for interrupted API jobs.
 
-## Eval change
+Important options:
 
-`grounding.py` treats `BOX_EXEMPT_LABELS = {high_density, no_hazard}` separately:
-box-exempt hazards are removed from the IoU matching pool (never FP/FN in box
-metrics) and scored by **frame-level presence** (precision/recall) instead.
+- `--shopping-list`: label exactly the selected mining records without repeating rarity selection;
+- `--max-frames`: small test run before API spending;
+- `--dry`: use only image-covered frames and skip paid descriptions;
+- `--out-dir`: location for labels, batch state, and resume cache.
 
-## Compute
+The full run rejects an incomplete image mount rather than silently changing the data
+distribution. Dense frames use a large response budget because shorter Claude responses were
+observed to truncate before valid JSON completed.
 
-- GT projection: **CPU only** (nuScenes SDK geometry), minutes for all selected
-  frames. No GPU.
-- OOD detector (unusual_object only, later): OWLv2/GroundingDINO on the
-  ~2,754 selected frames ≈ 5–20 min on a 4090, 4–8 GB VRAM.
-- VLM describe-only: API, no local GPU.
+## Projection verification
 
-## Build order (each proven before the next)
+A 50-frame real-data check produced 223 boxes with:
 
-1. ✅ This doc.
-2. ✅ Wire `get_2d_bbox_from_3d` into box sourcing for GT classes.
-3. ✅ Hard box filter + reject log.
-4. ✅ Validation gate script (fails the build on the criteria above).
-5. ✅ **50-frame proof** on v1.0-trainval (CPU): 0.9955 diversity, all classes
-   present, projection verified sound (occluded peds correctly captured; the 82
-   dropped are out-of-FOV, not lost). Two bugs found + fixed (visibility_token,
-   frustum clipping).
-6. ⏭ Full regeneration → gate must pass → retrain. **Approved to plan; not started.**
+- unique-box ratio: 0.9955;
+- most-common-box frequency: 0.009;
+- zero boxes above the 40% area limit.
 
-## Regeneration (`scripts/regenerate_annotations_v2_colab.py`)
+The same sample contained all mapped hazard classes, including 28 occluded pedestrians.
 
-One command: curate (`--min-score 5`) → **per-scene dedup** (`--frames-per-scene`,
-default 3) → GT box sourcing → describe-only Claude → SFT JSONL (scene-level split)
-→ hard gate. Notes from the dry run that shaped it:
+Two bugs were found during this verification:
 
-- **Describe-only `max_tokens=4096`** — 1024 truncated the JSON on dense (many-
-  hazard) frames, causing ~40% parse failures; 4096 fixed it (0 failures).
-- **Per-scene dedup** — a static object (barrier/cone) across consecutive keyframes
-  of a stopped-ego scene projects to the *same* box on many frames. That's correct
-  labelling but temporally-redundant; capping frames per scene removes the near-
-  duplicates (and stops the cross-frame-dup gate check from firing on benign repeats).
-- **`--dry`** uses image-covered frames only; a non-dry run asserts ≥95% image
-  coverage so a partial trainval mount can't silently bias the dataset.
-- VLM-failed frames are excluded (never templated); label + bbox_2d always come
-  from nuScenes GT.
+### Visibility field
 
----
+nuScenes stores the usable value in `visibility_token` (`"1"` through `"4"`). Parsing the
+human-readable `visibility.level` string as an integer caused every pedestrian to fall back to
+fully visible. The data loaders and Spark rarity path now use the token.
 
-## Step-5 proof results (nuScenes v1.0-trainval, Colab CPU)
+### Near-plane clipping
 
-Ran the committed `source_boxes_for_frame` / `get_2d_bbox_from_3d` on real frames:
+The old projector discarded corners behind the camera before projection. A box crossing the camera
+plane could therefore become inverted or empty. `project_box_to_2d` now clips every cuboid edge at
+`z = 0.1 m` before projection, with unit coverage in `tests/test_transforms.py`.
 
-- **Box diversity (representative 50 frames):** `unique_box_ratio = 0.9955`,
-  `max_single_box_freq = 0.009`, 223 boxes — vs the v1 labels' 0.33 / 0.16.
-  Zero boxes over 40% area. The collapse is gone.
-- **Per-class kept (50 frames w/ occluded peds):** jaywalking 97, construction_zone
-  75, high_density 44, occluded_pedestrian 28, cyclist_proximity 23, unusual_object 5.
-- **Occluded-pedestrian scan (401 vis-1 pedestrians):** 89 kept, 214
-  `none_behind_camera` (not in CAM_FRONT — correctly skipped), 82 `inverted_or_zero`,
-  16 `degenerate_tiny`.
+A separate review of 82 apparently inverted pedestrian boxes showed that all were outside the
+front-camera field of view. None was an in-frame pedestrian lost by projection. Near-plane clipping
+remains a correctness safeguard rather than a recovery of those 82 cases.
 
-### Bug found + fixed #1 — visibility parsing
-`visibility.level` is a **string** (`"v0-40"`), not an int; `int(level)` fell back
-to 4 ("fully visible"), so **`occluded_pedestrian` was never produced** (every
-pedestrian became `jaywalking`). Fixed to read `visibility_token` ("1".."4") via
-`box_sourcing.visibility_level_of`. Same latent bug still exists in
-`nuscenes_loader.py` and `spark_pipeline.py` (rarity occlusion signal) — noted, not
-yet fixed.
+## Compute requirements
 
-### Bug found + fixed #2 — near-plane projection (frustum clipping)
-The original `get_2d_bbox_from_3d` dropped behind-camera corners and projected only
-the front ones. Fixed with proper **near-plane frustum clipping**
-(`transforms.project_box_to_2d`): each cuboid edge crossing `z = 0.1 m` is clipped
-at the plane before projection. Unit-tested (`tests/test_transforms.py`).
-
-**Re-verification finding (important correction):** the 82 `inverted_or_zero` were
-**not** close, straddling pedestrians. A targeted check showed all 82 are
-pedestrians in front of the camera but **outside the CAM_FRONT field of view**
-(off to the sides/above/below) — they project entirely off-screen and are
-*correctly* dropped; **0 were wrongly dropped** (`in_FOV_but_dropped = 0`). So the
-frustum clip is a **defensive correctness improvement, not a recovery**: the
-pipeline already captured every occluded pedestrian actually visible in CAM_FRONT
-(~88 of 400 vis-1 pedestrians; the rest are behind/beside the ego, i.e. not in the
-front camera). No close pedestrians were being lost.
+GT projection and label validation are CPU-only. Claude descriptions use the API and do not require
+a local GPU. Model training is a separate GPU step and begins only after the validation gate passes.

@@ -57,5 +57,5 @@ jobs:
           # --gate exits non-zero on a weak-bucket regression so a bad candidate can't merge.
           # For this repo v4 IS a documented regression, so we surface it as a warning to keep
           # main green; on a real candidate PR, drop the '|| ...' so the gate fails the build.
-          python mlops_report.py --gate \
+          python scripts/mlops_report.py --gate \
           || echo "::warning:: regression gate BLOCKED the candidate (expected for the v4 demo)"

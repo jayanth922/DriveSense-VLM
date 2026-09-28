@@ -1,85 +1,86 @@
-# DriveSense-VLM — Debugging Postmortem
+# Debugging postmortem
 
-> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left).
-> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+[Back to the project README](../README.md)
 
+This document records three failures that changed the project. The first was an evaluation bug;
+the other two were model and data regressions. All v3/v4 comparisons use the fixed 1,041-frame
+test set.
 
-Three real failures found and diagnosed across v2→v3→v4. The value of this project is not a
-high accuracy number — it is a rigorous lifecycle that *surfaces* failures and roots them out.
-Every number below is measured on the fixed 1,041-frame test set.
+## 1. IoU collapsed because training and inference used different image settings
 
----
+**Observed behavior:** every class had an IoU close to zero. The initial result looked like a
+complete localization failure.
 
-## Failure 1 — All-zero IoU: a coordinate-convention bug (not the model)
+**Cause:** prediction generation loaded the base processor without the training pixel limits.
+Inference therefore used Qwen's larger default image representation instead of the resolution
+used during fine-tuning. The model started emitting coordinates outside the labels' normalized
+0-1000 range; 17% of sampled coordinates were above 1000.
 
-**Symptom.** Official L1 grounding returned IoU ≈ 0 across every class. Easy misread:
-"the model can't localize."
+**Fix:** generation now applies the same processor limits as training: `min_pixels=200704` and
+`max_pixels=602112`. After the fix, none of 64 sampled coordinates exceeded 1000. The corrected
+v3 result was precision 0.40, recall 0.24, F1 0.30, and mean matched IoU 0.67.
 
-**Root cause.** A Qwen2-VL vs Qwen2.5-VL convention footgun in the *generation* path. The
-prediction script loaded the processor from the base model with **no `min/max_pixels`**, so
-inference ran at Qwen's ~1 MP default instead of training's 602112. The model saw
-out-of-distribution image sizes; Qwen2.5-VL's native **absolute-pixel** grounding prior then
-overrode the learned **0–1000 normalized** convention, and predicted boxes drifted off-scale
-(17% of coords > 1000) while GT stayed 0–1000. IoU on mismatched units collapses to zero.
+The evaluator also gained an all-zero-IoU check. If predictions and labels both contain boxes but
+every overlap is exactly zero, evaluation stops instead of publishing a misleading score.
 
-**Fix.** Pin the processor to training resolution (`min_pixels 256 / max_pixels 768` →
-200704 / 602112) in the generation path. Coordinate drift went to **0/64 sampled coords > 1000**;
-clean L1 emerged (P 0.40 / R 0.24 / F1 0.30 @0.5, mean IoU 0.67). Added a
-`_assert_iou_not_all_zero()` guard so this class of bug fails loudly forever.
+**Takeaway:** image preprocessing and coordinate conventions are part of the model interface. They
+must match between training and inference.
 
-**Lesson.** A metric of exactly zero is a systems bug until proven otherwise. Resolution is
-part of the model contract for VLMs — train and inference must match to the pixel budget.
+## 2. The first data scale-up reduced generalization
 
-## Failure 2 — Naive data scaling *hurt* generalization (v2→v3)
+**Observed behavior:** increasing the training set from 2,754 to 7,228 examples raised validation
+loss from 0.31 to 0.66 while training loss continued to fall.
 
-**Symptom.** Scaling SFT data 2,754 → 7,228 examples **doubled eval_loss** (0.31 → 0.66)
-while train_loss fell — a textbook overfitting/quality-dilution signature.
+**Cause:** the larger dataset was not uniformly better, and five epochs overfit it. Two pipeline
+issues made the result harder to diagnose:
 
-**Root cause.** More data was not better data: the naive scale-up diluted label quality and
-over-fit at 5 epochs. Two secondary bugs compounded it: the best checkpoint was **pruned by
-`save_total_limit`** so `load_best_model_at_end` restored the *final* (overfit) state, and the
-LLM judge silently scored 1.0 on every call because Sonnet rejected a `temperature` param and
-the exception defaulted to score=1.
+- `save_total_limit` could delete the best checkpoint before it was restored;
+- the reasoning judge returned a score of 1.0 after API errors, hiding failed judge calls.
 
-**Fix.** 2–3 epochs + early stopping on eval_loss; `save_total_limit ≥ epochs` so the best
-checkpoint survives; judge hardened to return `None` on error (not a fake 1.0).
+**Fixes:** training uses early stopping and fewer epochs where appropriate, checkpoint retention
+keeps every candidate best epoch, and judge errors now return `None` rather than a fabricated
+score.
 
-**Lesson.** "Add more data" is a hypothesis, not a strategy. Measure generalization, not
-train loss; and guard every silent-default path in eval tooling.
+**Takeaway:** dataset size and training loss are not enough to judge a training run. Validation
+loss and a fixed evaluation set must decide whether a new checkpoint is better.
 
-## Failure 3 — Targeted data *also* didn't help — the honest flywheel result (v3→v4)
+## 3. Targeted adverse-weather data did not improve v4
 
-**Hypothesis.** The L4 failure map said rain / night / tiny boxes were the weak buckets, so a
-*targeted* flywheel turn (mine adverse frames → FM auto-label behind a gate → leakage-safe
-retrain) should lift exactly those buckets.
+**Hypothesis:** because rain, nighttime scenes, and tiny objects were the weakest buckets, adding
+more examples from those conditions should improve them.
 
-**Result.** It did not. On the fixed test set, det@0.5 **regressed** on the mined buckets:
-rain 12.5% → 7.4%, night+tiny 12.7% → 10.7%, tiny 22.8% → 17.2%; overall recall 0.24 → 0.19.
-Mean IoU held at 0.66, so this is a real result, not a drift artifact.
+**Result:** v4 regressed on all three protected buckets:
 
-**Diagnosis.** (1) v4 introduced 216 `no_hazard` negatives (v3 had zero) → the model learned
-to withhold → recall dropped everywhere, worst on the ambiguous adverse scenes. (2) The
-Sonnet-5 pixel-grounded labels place boxes differently than v3's labels → distribution shift
-on a v3-labeled test set. (3) The dominant factor is size: tiny boxes are 78% of hazards at
-mean IoU ~0.16 — a 3B model at 768 visual tokens is capacity/resolution-limited there, and
-~1.4k more frames doesn't move that.
+| Bucket | v3 | v4 |
+|---|---:|---:|
+| Rain | 12.5% | 7.4% |
+| Night and tiny | 12.7% | 10.7% |
+| Tiny | 22.8% | 17.2% |
 
-**Conclusion.** Two data-scaling experiments — naive (v3) and targeted (v4) — both show that,
-for this model, **scaling data is not the lever for rare-hazard recall**. The high-leverage
-moves are model-side (input resolution, tiny-box loss weighting, a detection-specialized head)
-and label-convention consistency. The flywheel *loop* is the deliverable; the honest negative
-is the finding, and the regression gate is what catches it before promotion.
+Overall recall fell from 0.24 to 0.19. Mean matched IoU stayed near 0.66, so the change was not
+another coordinate failure.
 
-*Note: the v4 addition also carries a label-provenance confound (FM-emitted boxes on the
-mined frames vs. GT-projected boxes everywhere else) that isn't isolated from the targeting
-effect above — see [FLYWHEEL_V4_FINDINGS.md § Label-provenance confound in the v4
-experiment](FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment).*
+Several variables changed in v4. It introduced 216 `no_hazard` negatives, which may have made the
+model more conservative. More importantly, its targeted labels used foundation-model-emitted
+boxes, unlike the GT-projected boxes in the main training set. The controlled Task 3 experiment
+later confirmed that this provenance change materially reduced localization performance.
 
----
+Tiny objects also remain a model-side limitation: they make up 78% of test hazards, and their
+detection rate stays far below the medium-object rate. More examples alone did not overcome the
+resolution and capacity limit.
 
-## What makes these "senior" findings
+**Takeaway:** targeted sampling does not help if the added labels use a different localization
+convention. The regression gate prevented the weaker candidate from replacing v3.
 
-Each failure was (a) reproduced on a fixed benchmark, (b) root-caused to a specific mechanism
-rather than hand-waved as "the model is bad," (c) fixed with a guard that prevents recurrence,
-and (d) reported honestly even when the answer was "our idea didn't work." That loop — surface,
-diagnose, guard, report — is the perception-gap discipline these roles are hiring for.
+## Preventive checks added
+
+- shared processor pixel limits for training and inference;
+- an all-zero-IoU abort in grounding evaluation;
+- checkpoint retention compatible with best-model restoration;
+- explicit judge failure handling;
+- scene-level leakage checks;
+- label diversity and schema validation;
+- a candidate-versus-baseline regression gate in CI.
+
+The detailed v4 analysis is in [`FLYWHEEL_V4_FINDINGS.md`](FLYWHEEL_V4_FINDINGS.md). The
+box-provenance experiment is in [`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md).

@@ -27,9 +27,9 @@ if str(_SRC) not in sys.path:
 # PySpark 4.0 bundles Hadoop 3.4.1 which calls Subject.getSubject() (removed
 # in JDK 23).  We patch java.base with a Subject.class where getSubject()
 # returns null instead of throwing, so Hadoop falls through to getLoginUser().
-# The patched class lives at compat/java_patch/javax/security/auth/Subject.class.
+# The patched class lives at tests/fixtures/java_patch/javax/security/auth/Subject.class.
 # ---------------------------------------------------------------------------
-_PATCH_DIR = Path(__file__).resolve().parent.parent / "compat" / "java_patch"
+_PATCH_DIR = Path(__file__).resolve().parent / "fixtures" / "java_patch"
 if _PATCH_DIR.exists():
     _submit_args = os.environ.get("PYSPARK_SUBMIT_ARGS", "pyspark-shell")
     _patch_opt = f"--patch-module java.base={_PATCH_DIR}"

@@ -10,7 +10,7 @@ Reuses drivesense.data.batch_describe (build_request/chunk_jobs/BatchState/
 submit_new/drain_existing) verbatim — the box-exempt, size-capped GT hazards are
 passed straight through as the "given hazards".
 
-  python deconfound/describe_manifest.py \
+  python experiments/task3_deconfound/describe_manifest.py \
       --manifest /workspace/deconfound_work/base_val/annotated_manifest.json \
       --out      /workspace/deconfound_work/base_val \
       --state    /workspace/deconfound_work/base_val/describe_batches.json \

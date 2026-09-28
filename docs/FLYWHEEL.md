@@ -1,66 +1,70 @@
-# DriveSense-VLM — The Data Flywheel (self-improving loop)
+# Data flywheel
 
-> Part of **[DriveSense-VLM](../README.md)** — see the README for status, the full results tables, and the canonical [What's left](../README.md#whats-left).
-> Detection numbers trace to [`results/metrics_registry.json`](../results/metrics_registry.json); inference numbers to [`INFERENCE_OPTIMIZATION.md` §7](INFERENCE_OPTIMIZATION.md).
+[Back to the project README](../README.md)
 
+The flywheel turns evaluation failures into a new training candidate. Each stage writes an
+artifact that can be inspected or reused, and the final regression gate decides whether the new
+model is safe to promote.
 
-A repeatable, mostly-automated loop that turns a model's *measured weaknesses* back into
-*targeted training data*, then verifies whether the change helped — with a gate that blocks
-regressions. This is the "Data & Test Flywheel" pattern: select → label → train → test →
-repeat, with minimal human intervention.
-
-```
-        ┌─────────────────────────────────────────────────────────────┐
-        │                                                             │
-        ▼                                                             │
-  (1) EVAL + STRATIFY ──► (2) SELECT weak-bucket frames ──► (3) MINE  │
-   L1/L4 failure map        from the failure map            adverse   │
-        ▲                                                    frames   │
-        │                                                      │      │
-  (6) REGRESSION GATE ◄── (5) RE-EVAL ◄── (4b) RETRAIN ◄── (4a) AUTO- ┘
-   promote or BLOCK        fixed test      LoRA SFT          LABEL + GATE
-                                                            (FM behind a
-                                                             validation gate)
+```text
+evaluate -> find weak conditions -> select frames -> mine images
+   ^                                                |
+   |                                                v
+promote or block <- regression gate <- retrain <- label and validate
 ```
 
-## The loop, one stage per command
+## Stages
 
-| stage | command | output |
+| Stage | Command | Main output |
 |---|---|---|
-| 1. Eval + stratify | `run_evaluation.py --level 1` ; `analyze_failure_stratification.py` | `failure_stratification.json` (the weak buckets) |
-| 2. Select targets | `select_mining_targets.py` (reads the failure map) | ranked mining shopping list |
-| 3. Mine | `scripts/v4/build_v4_manifest.py` | leakage-safe candidate manifest (verified vs real nuScenes tables) |
-| 4a. Auto-label + gate | `scripts/v4/v4_batch_label.py` | SFT labels (FM behind the validation gate; 7-class constrained) |
-| 4b. Build + retrain | `scripts/v4/v4_build_trainset.py` ; `run_training.py` | new adapter (best-by-eval-loss) |
-| 5. Re-eval | `run_generate_predictions.py` ; `run_evaluation.py` ; `analyze_failure_stratification.py` | new predictions + failure map |
-| 6. Gate | `run_regression_gate.py` | **PROMOTE or BLOCK** vs the current production model |
+| Evaluate | `scripts/run_evaluation.py --level 1` | grounding metrics |
+| Stratify failures | `scripts/analyze_failure_stratification.py` | weak size and condition buckets |
+| Select targets | `scripts/select_mining_targets.py` | ranked shopping list |
+| Mine images | `scripts/run_streaming_miner.py` or `scripts/v4/build_v4_manifest.py` | bounded-storage image set and manifest |
+| Label | `scripts/regenerate_annotations_v2_colab.py` or `scripts/v4/v4_batch_label.py` | SFT records |
+| Validate | `scripts/run_label_validation.py` | pass/fail report for schema and box quality |
+| Train | `scripts/run_training.py` | LoRA adapter and training metrics |
+| Re-evaluate | prediction, evaluation, and stratification scripts | candidate metrics |
+| Gate | `scripts/run_regression_gate.py` | promote or block decision |
 
-## Guardrails that make it trustworthy (not just automated)
+## Safeguards
 
-- **Leakage-safe by construction.** Every mined frame is mapped to its nuScenes `scene_token`
-  and dropped if it shares a scene with the *fixed* val/test split. The test set never moves,
-  so v(n) vs v(n+1) is always apples-to-apples. (v4 dropped 986 leaking frames.)
-- **Validation gate on labels.** The foundation-model labeler is constrained to the 7-class
-  taxonomy, prompt-hardened against over-labeling, and every box is repaired/validated before
-  it becomes training data. Gate pass/fail counts are logged.
-- **Best-checkpoint discipline.** Early stopping on eval_loss; `save_total_limit ≥ epochs` so
-  the best checkpoint is never pruned.
-- **Regression gate closes the loop.** A candidate that degrades weak-bucket recall is
-  **blocked**, not promoted — the loop can run unattended without silently shipping a worse
-  model. (v4 was correctly blocked.)
+### Split isolation
 
-## What the v3→v4 turn taught us
+Frames are grouped by nuScenes scene token. A scene assigned to validation or test cannot enter
+training through a later mining pass. The v4 build removed 986 candidate frames because they
+shared a scene with the fixed evaluation sets.
 
-The loop ran end-to-end and returned an **honest negative**: targeted adverse data regressed
-the very buckets it mined for (rain det@0.5 12.5%→7.4%). That is the flywheel working as
-designed — it produced a trustworthy measurement and the gate caught the regression. The next
-turn's lever, per the diagnosis, is **model-side** (resolution / tiny-box weighting), not more
-data. A self-improving system that can conclude "this change didn't help, don't ship it" is
-more valuable than one that only knows how to add data.
+### Label validation
 
-## Toward one-command operation
+The label gate checks schema, coordinate bounds, oversized boxes, box diversity, and repeated
+coordinates. Training stops if the generated set looks collapsed or malformed.
 
-The stages above are pure functions over the persistent data volume, so the loop is a thin
-orchestrator away from `make flywheel` (or an Airflow/Prefect DAG): each stage is idempotent,
-writes a JSON artifact, and the next stage consumes it. The regression gate's exit code is the
-promotion signal for CI/CD. See `.github/workflows/ci.yml` for the gate wired into CI.
+### Checkpoint selection
+
+Training selects the checkpoint with the best validation loss. Checkpoint retention is configured
+so that the best epoch cannot be deleted before `load_best_model_at_end` runs.
+
+### Candidate regression gate
+
+The gate compares a candidate with the selected model on the conditions that already perform
+poorly. A candidate is blocked if any protected metric falls beyond its tolerance. This happened
+to v4, so v3 remained selected.
+
+## What happened in the v4 turn
+
+v4 added 1,442 rain and nighttime examples. Performance nevertheless fell on rain, night with
+tiny objects, and tiny objects overall. The gate blocked the candidate.
+
+A follow-up experiment showed that box provenance contributed substantially to the regression:
+the added v4 labels used foundation-model-emitted boxes, while the main v2/v3 set used boxes
+projected from nuScenes 3D ground truth. See
+[`TASK3_DECONFOUND.md`](TASK3_DECONFOUND.md) and
+[`FLYWHEEL_V4_FINDINGS.md`](FLYWHEEL_V4_FINDINGS.md).
+
+## Automation boundary
+
+The stages are idempotent and communicate through JSON or JSONL artifacts. They could be wrapped
+in Airflow, Prefect, or a Make target, but the repository keeps them as separate commands so that
+costly API and GPU stages remain explicit. CI currently runs the test suite, smoke checks, and the
+regression gate in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).

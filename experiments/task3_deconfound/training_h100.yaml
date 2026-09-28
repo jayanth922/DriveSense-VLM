@@ -8,17 +8,18 @@
 # see the note below.
 #
 # run_training.py loads model.yaml + data.yaml FROM THIS FILE'S DIRECTORY, so the
-# sibling deconfound/model.yaml and deconfound/data.yaml are used. Point it at an
+# sibling experiments/task3_deconfound/model.yaml and data.yaml are used. Point it at an
 # arm via env vars (expanded by utils/config.py):
 #
-#   SFT_DIR   -> deconfound/data.yaml annotation.sft_output_dir (which arm to train)
+#   SFT_DIR   -> experiments/task3_deconfound/data.yaml annotation.sft_output_dir
+#                (which arm to train)
 #   OUT_DIR   -> training.output_dir (where the LoRA adapter lands)
 #   ATTN_IMPL -> model.yaml attn_implementation (sdpa default; flash_attention_2 if built)
 #
 #   SFT_DIR=/workspace/deconfound_work/arm_fm OUT_DIR=/workspace/deconfound_work/out_fm \
-#     python scripts/run_training.py --config deconfound/training_h100.yaml
+#     python scripts/run_training.py --config experiments/task3_deconfound/training_h100.yaml
 #   SFT_DIR=/workspace/deconfound_work/arm_gt OUT_DIR=/workspace/deconfound_work/out_gt \
-#     python scripts/run_training.py --config deconfound/training_h100.yaml
+#     python scripts/run_training.py --config experiments/task3_deconfound/training_h100.yaml
 # =============================================================================
 
 training:

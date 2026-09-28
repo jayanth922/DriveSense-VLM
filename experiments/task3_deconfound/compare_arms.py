@@ -8,7 +8,7 @@ covers the whole test set) and the condition-stratified detection rates
 (by_time_of_day, by_weather). That is everything the de-confound headline needs,
 so we read it directly rather than the human-readable Level-1 report.
 
-    python deconfound/compare_arms.py --fm results_fm --gt results_gt \
+    python experiments/task3_deconfound/compare_arms.py --fm results_fm --gt results_gt \
         --out deconfound_result.json
 """
 from __future__ import annotations

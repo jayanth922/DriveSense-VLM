@@ -10,7 +10,7 @@ Usage:
     python scripts/upload_to_hf.py \\
         --model-dir outputs/quantized_model \\
         --processor-dir outputs/merged_model \\
-        --examples-dir huggingface_space/examples \\
+        --examples-dir deploy/huggingface/space/examples \\
         --repo-id jayanth922/DriveSense-VLM
 
     # Or pass the token directly
@@ -36,9 +36,10 @@ logging.basicConfig(
 logger = logging.getLogger("upload_to_hf")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_HF_ROOT = _REPO_ROOT / "deploy" / "huggingface"
 
 DEFAULT_REPO_ID = "jayanth922/DriveSense-VLM"
-DEFAULT_MODEL_CARD = _REPO_ROOT / "hf_model_card" / "README.md"
+DEFAULT_MODEL_CARD = _HF_ROOT / "model_card" / "README.md"
 
 MODEL_FILE_PATTERNS = (
     "*.safetensors",
@@ -77,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--examples-dir",
         type=Path,
-        default=_REPO_ROOT / "demo" / "examples",
+        default=_HF_ROOT / "space" / "examples",
         help="Path to example dashcam images. Uploaded under examples/ in the repo.",
     )
     p.add_argument(

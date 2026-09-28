@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deploy the DriveSense-VLM Gradio demo to a HuggingFace Space.
 
-Uploads everything under ``huggingface_space/`` (app.py, requirements.txt,
-README.md, optional examples/) to a HuggingFace Space repo, creating the Space
-if it does not yet exist.
+Uploads everything under ``deploy/huggingface/space/`` (app.py,
+requirements.txt, README.md, optional examples/) to a HuggingFace Space repo,
+creating the Space if it does not yet exist.
 
 Usage:
     python scripts/deploy_to_space.py --token hf_xxx
@@ -22,14 +22,14 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_SPACE_DIR = _REPO_ROOT / "huggingface_space"
+_DEFAULT_SPACE_DIR = _REPO_ROOT / "deploy" / "huggingface" / "space"
 _DEFAULT_SPACE_ID = "jayanth7111/DriveSense-VLM-demo"
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     p = argparse.ArgumentParser(
-        description="Deploy huggingface_space/ to a HuggingFace Space.",
+        description="Deploy deploy/huggingface/space/ to a HuggingFace Space.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--space-dir",
         default=str(_DEFAULT_SPACE_DIR),
-        help="Local directory to upload (default: huggingface_space/).",
+        help="Local directory to upload (default: deploy/huggingface/space/).",
     )
     p.add_argument(
         "--private",

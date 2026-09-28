@@ -1,296 +1,228 @@
 # DriveSense-VLM
 
-> SFT-optimized vision-language model for autonomous-vehicle rare hazard detection
-
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![Model: Qwen2.5-VL-3B](https://img.shields.io/badge/model-Qwen2.5--VL--3B-orange)](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 
-DriveSense-VLM fine-tunes [Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
-with LoRA SFT to detect and explain rare, safety-critical hazards in autonomous-driving dashcam
-frames. Given a single frame, it returns structured JSON: a bounding box per hazard, a 7-class
-hazard label, a severity rating, one sentence of reasoning, and a recommended ego-vehicle action.
+DriveSense-VLM is an end-to-end project for detecting rare road hazards in dashcam images. It
+fine-tunes Qwen2.5-VL-3B-Instruct with LoRA and returns a structured report for each frame:
 
-Training boxes come from nuScenes 3D ground truth projected into the 2D camera frame; a
-foundation model (Claude) only writes the severity/reasoning/action text for each real box — it
-does not localize. That held for the base v2/v3 training set, but not for one experimental
-addition (the v4 targeted-mining turn), which had the model draw boxes directly instead. Task 3,
-below, measures how much that provenance switch actually cost.
+- hazard class;
+- 2D bounding box;
+- severity;
+- short explanation;
+- recommended driving action.
 
----
+The repository covers the full model lifecycle: distributed data mining, annotation, validation,
+training, evaluation, regression gating, inference profiling, monitoring, and deployment.
 
-## What's here
+## Project summary
 
-An end-to-end pipeline: mine rare frames from nuScenes, auto-label them with a foundation model
-behind a validation gate, fine-tune a small VLM to detect and reason about them, then evaluate
-across four levels (grounding, reasoning, production readiness, robustness) with a regression
-gate that blocks a candidate from replacing the current model. Two full turns of that loop have
-run (v2→v3, v3→v4); a controlled ablation (Task 3) followed up on a question the second turn
-left open. Inference is separately profiled on a T4 to find the actual bottleneck rather than
-guessing at one, and a small MLOps layer (a metrics registry, a regression gate, CI) ties the
-whole thing together.
+The data pipeline starts with nuScenes keyframes. PySpark and the streaming miner identify rare
+scenes without requiring the full image archive to fit on disk. For the main v2/v3 dataset,
+nuScenes 3D annotations are projected into the front camera to create 2D boxes. Claude supplies
+the description, severity, and action for those boxes; it does not localize them.
 
-Every detection number below traces to [`results/metrics_registry.json`](results/metrics_registry.json);
-every inference number traces to [`INFERENCE_OPTIMIZATION.md` §7](docs/INFERENCE_OPTIMIZATION.md),
-reproducible with [`scripts/inference_benchmark.py`](scripts/inference_benchmark.py); Task 3's
-numbers trace to the committed eval output at
-[`results/task3_deconfound/`](results/task3_deconfound/) (full write-up in
-[`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md)) and are reproducible with
-[`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md).
+The model is trained with LoRA SFT and evaluated at four levels:
 
----
+1. box grounding and hazard classification;
+2. reasoning quality;
+3. inference and production metrics;
+4. performance by weather, time of day, and object size.
 
-## Task 3 — does box provenance actually matter (latest work)
+A regression gate compares each candidate with the current model. The v4 candidate failed that
+gate, so v3 remains the selected checkpoint. This negative result is retained because it shows
+that adding targeted data can still reduce performance when label provenance changes.
 
-The v3→v4 flywheel turn added 1,442 targeted rain/night frames and, at the same time, switched
-those frames' boxes from GT-projected to foundation-model-emitted — two changes at once, so the
-resulting regression on rain/night/tiny buckets couldn't be attributed to either one cleanly (see
-[`FLYWHEEL_V4_FINDINGS.md` § Label-provenance
-confound](docs/FLYWHEEL_V4_FINDINGS.md#label-provenance-confound-in-the-v4-experiment)). Task 3 isolates
-box provenance directly: two LoRA arms sharing an identical base/val/test set and an identical set
-of targeted frame ids, differing only in whether the targeted boxes are FM-emitted or
-GT-projected. Full write-up, per-condition breakdown, and limitations are in
-[`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md); the headline is below.
+## Results
 
-The original v3/v4 per-frame training data did not survive, so this is a faithful reconstruction
-of the experiment design at reduced scale (base 2,652 frames, targeted 1,162, test 402 of the
-fixed 1,041), not a byte-for-byte replay of the published v3/v4 rows — read the FM-vs-GT delta as
-the finding, not the absolute recall numbers.
+Detection metrics come from
+[`results/metrics_registry.json`](results/metrics_registry.json). v3 and v4 use the same
+1,041-frame nuScenes test set.
 
-| metric | FM | GT |
-|---|---|---|
-| Recall (detection rate) | 0.101 | 0.167 |
+### Detection at IoU >= 0.5
+
+| Version | Training frames | Precision | Recall | F1 | Mean IoU | Class accuracy | Parse rate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| v3, selected | 7,228 | 0.40 | 0.24 | 0.30 | 0.67 | 0.94 | 98.7% |
+| v4, blocked | 8,670 | 0.37 | 0.19 | 0.25 | 0.656 | 0.946 | 97.4% |
+
+The model localizes matched hazards well, but recall remains the main limitation. Tiny and distant
+objects account for most of the missed detections.
+
+### Performance by condition
+
+| Test bucket | v3 | v4 |
+|---|---:|---:|
+| Overall | 28.0% | 23.0% |
+| Tiny boxes | 22.8% | 17.2% |
+| Small boxes | 46.4% | 42.9% |
+| Medium boxes | 52.6% | 52.6% |
+| Rain | 12.5% | 7.4% |
+| Night and tiny | 12.7% | 10.7% |
+| Clear and medium | 69.0% | 69.0% |
+
+v4 added 1,442 targeted adverse-condition frames, but the exact buckets it targeted became worse.
+The CI gate therefore blocked promotion. See
+[`docs/FLYWHEEL_V4_FINDINGS.md`](docs/FLYWHEEL_V4_FINDINGS.md) for the analysis.
+
+### Reasoning quality
+
+The v3 reasoning evaluation used Claude Sonnet 5 as judge on 1,027 examples.
+
+| Dimension | Score |
+|---|---:|
+| Correctness | 3.03 / 5 |
+| Completeness | 2.66 / 5 |
+| Action relevance | 3.80 / 5 |
+| Overall | 3.16 / 5 |
+| Pass rate, all dimensions >= 3.5 | 26% |
+
+Action recommendations were stronger than hazard coverage. This agrees with the grounding result:
+the model is more likely to omit a hazard than to give poor advice for one it has detected.
+
+## Box-provenance experiment
+
+The v4 data addition changed two variables at once: scene selection and box source. Its new boxes
+were emitted by the foundation model instead of projected from nuScenes ground truth. A follow-up
+experiment trained two otherwise matched arms to isolate that difference.
+
+| Metric | FM-emitted boxes | GT-projected boxes |
+|---|---:|---:|
+| Recall | 0.101 | 0.167 |
 | Precision | 0.176 | 0.330 |
 | F1 | 0.128 | 0.222 |
-| False-positive rate (lower is better) | 0.488 | 0.169 |
 | Mean best-pair IoU | 0.244 | 0.458 |
-| Frame detect @ IoU 0.5 | 0.266 | 0.566 |
+| Frame detection at IoU 0.5 | 0.266 | 0.566 |
 | No-hazard accuracy | 0.512 | 0.831 |
-| Mean IoU (matched) | 0.632 | 0.641 |
-| Label accuracy (matched) | 0.962 | 0.954 |
 
-GT-projected boxes win on every axis except matched-class label accuracy, where the two arms are
-within a point of each other — the gap is in whether and where a box gets drawn, not in what it's
-called once drawn. The effect is largest exactly where it matters most: the FM arm detects
-nothing at all at night (0.000 vs GT's 0.151) or in rain (0.000 vs GT's 0.050, and every FM box
-it does draw in rain is wrong). Box-supervision provenance was a real, previously-confounded
-driver of the v4 regression, not a minor detail. Limitations — reduced scale, a small rain bucket
-(104 frames), single seed — are stated in full in [`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md).
+GT-projected boxes performed better on every localization measure. Matched-class accuracy was
+similar, which points to localization rather than class naming as the main difference.
 
-The raw eval output backing this table is committed at
-[`results/task3_deconfound/`](results/task3_deconfound/) (`results_fm/`, `results_gt/`,
-`deconfound_result.json`) — reproduce with [`deconfound/RUNBOOK.md`](deconfound/RUNBOOK.md), which
-walks phases 0–7 (nuScenes reconstruction, GT-describe, FM-label, arm assembly, training,
-evaluation) with a cost gate and a $0 mock dry-run before any real spend.
+This was a reduced-scale reconstruction because the original per-frame v3/v4 artifacts were not
+retained. The comparison used 2,652 base frames, 1,162 targeted frames, and 402 test frames. The
+single-seed result should be treated as evidence about direction, not a final estimate of effect
+size. Full details are in [`docs/TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md).
 
----
+## Inference study
 
-## Results (v2 → v3 → v4, fixed test set)
+Inference was measured on one NVIDIA T4. The baseline is memory-bandwidth-bound during
+autoregressive decoding.
 
-All numbers in this section are measured on the fixed 1,041-frame test set (nuScenes
-v1.0-trainval, predominantly daytime).
+| Configuration | Decode tokens/s | TTFT | End-to-end p50 | Weight memory | HBM utilization | Output comparison |
+|---|---:|---:|---:|---:|---:|---|
+| fp16 | 17.0 | 770 ms | 11.64 s | about 6.0 GB | 31.8% | reference |
+| fp16 + prompt lookup | 20.4 | 781 ms | 9.79 s | about 6.0 GB | 38.2% | exact match 1.00 |
+| NF4 | 12.6 | 820 ms | about 15.9 s | 2.63 GB | 10.4% | character similarity 0.36 |
+| INT8 | 4.6 | about 1,080 ms | 53.53 s | about 3.5 GB | 5.0% | character similarity 0.29 |
 
-### Detection (L1 grounding, IoU ≥ 0.5)
+Prompt lookup reduced median latency by 16% without changing the output. NF4 reduced model memory
+by about 2.3x but made decoding slower and changed the generated text. In this workload,
+quantization is useful for fitting the model in memory, not for reducing latency. fp16 throughput
+increased from 14.9 to 33.7 tokens/s at batch size 4.
 
-| version | train ex. | Precision | Recall | F1 | mean IoU | class acc | parse |
-|---|---|---|---|---|---|---|---|
-| v3 (naive scale-up) | 7,228 | 0.40 | 0.24 | 0.30 | 0.67 | 0.94 | 98.7% |
-| v4 (targeted + adverse) | 8,670 | 0.37 | 0.19 | 0.25 | 0.656 | 0.95 | 97.4% |
+The benchmark and measurement notes are in
+[`docs/INFERENCE_OPTIMIZATION.md`](docs/INFERENCE_OPTIMIZATION.md). The numbers can be reproduced
+with [`scripts/inference_benchmark.py`](scripts/inference_benchmark.py).
 
-Precision and localization are strong (mean IoU 0.67, above the 0.55 target) and the hazard class
-is named correctly 94–95% of the time; the weak axis is recall on the rare long tail, especially
-tiny and distant boxes. An earlier version of this card reported ~1.4% F1 — that was a
-coordinate-convention bug (inference ran the image processor at a different resolution than
-training, so predicted boxes fell outside the labels' 0–1000 space and every IoU collapsed to
-~0). It's fixed; these are the corrected numbers.
+## Pipeline
 
-### Reasoning (L2, LLM-as-judge, Claude Sonnet 5, n = 1,027, v3)
+```text
+nuScenes metadata and image blobs
+        |
+        v
+rarity scoring and bounded-storage mining
+        |
+        v
+3D-to-2D box projection and description generation
+        |
+        v
+schema and box-diversity validation gate
+        |
+        v
+Qwen2.5-VL-3B LoRA training
+        |
+        v
+grounding, reasoning, robustness, and latency evaluation
+        |
+        v
+candidate regression gate: promote or block
+```
 
-| Dimension | Mean |
-|---|---|
-| Correctness | 3.03 |
-| Completeness | 2.66 |
-| Action relevance | 3.80 |
-| Overall | 3.16 / 5 |
-| Pass rate (all dims ≥ 3.5) | 26% |
+Important safeguards include near-plane clipping during projection, scene-level split isolation,
+hard validation of box diversity, an all-zero-IoU abort, and CI checks against the selected model.
 
-Recommended driving actions are the strongest dimension; completeness is weakest, consistent with
-the low detection recall — the model under-reports hazards more than it misjudges them.
+## Quick start
 
-### Robustness (L4, detection@0.5 by bucket)
-
-| bucket | v3 | v4 |
-|---|---|---|
-| tiny box (78% of hazards) | 22.8% | 17.2% |
-| small / medium box | 46.4% / 52.6% | 42.9% / 52.6% |
-| rain | 12.5% | 7.4% |
-| night + tiny | 12.7% | 10.7% |
-| clear + medium | 69% | 69% |
-
-v3 scaled data naively (2.7k→7.2k train examples) and generalization suffered (eval_loss
-0.31→0.66). v4 then added 1,442 targeted rain/night frames through the flywheel, and those exact
-buckets regressed further. The regression gate blocked the v4 candidate and v3 stayed the
-production model. Task 3 above is the follow-up that separates how much of that regression was
-the targeting versus the box-provenance shift riding along with it. See
-[`DEBUGGING_POSTMORTEM.md`](docs/DEBUGGING_POSTMORTEM.md), [`FLYWHEEL.md`](docs/FLYWHEEL.md),
-[`FLYWHEEL_V4_FINDINGS.md`](docs/FLYWHEEL_V4_FINDINGS.md), and the generated
-[`results/mlops_report.md`](results/mlops_report.md).
-
-### Inference (single T4, 16 GB, 320 GB/s HBM)
-
-Decode is memory-bandwidth-bound — the fp16 baseline converts 31.8% of HBM bandwidth into useful
-decode work — so each optimization targets that bottleneck specifically:
-
-| config | decode tok/s | TTFT | e2e p50 | weights | HBM roofline | vs fp16 output |
-|---|---|---|---|---|---|---|
-| fp16 (baseline) | 17.0 | 770 ms | 11.64 s | ~6.0 GB | 31.8% | reference |
-| fp16 + prompt-lookup | 20.4 (+20%) | 781 ms | 9.79 s (−16%) | ~6.0 GB | 38.2% | exact_match 1.00 |
-| NF4 (4-bit) | 12.6 (slower) | 820 ms | ~15.9 s | 2.63 GB | 10.4% | char_sim 0.36 |
-| INT8 | 4.6 | ~1080 ms | 53.53 s | ~3.5 GB | 5.0% | char_sim 0.29 |
-
-Throughput (fp16 aggregate decode): 14.9 → 33.7 tok/s at batch 4 (~2.3×). Prompt-lookup
-speculative decoding is a free latency win — the structured-JSON output repeats prompt tokens
-verbatim, so an n-gram drafter lands often, and verification keeps the output bit-identical to
-fp16. NF4 is a memory lever, not a speedup: it shrinks weights ~2.3× to fit a 16 GB card, but
-decode gets slower and the output drifts (char_sim 0.36), so it ships only behind an L1/L4
-re-eval, never on a VRAM number alone. INT8 is worse on every axis and isn't recommended here.
-End-to-end latency is seconds per image (11.6 s fp16 / 9.8 s with prompt-lookup) — this is an
-autoregressive VLM benchmarked as a compression/throughput story, not a real-time claim.
-
-Full diagnosis (roofline, quality gate, percentiles) is in
-[`INFERENCE_OPTIMIZATION.md`](docs/INFERENCE_OPTIMIZATION.md).
-
-### Limitations
-
-Recall on the rare long tail is the weak axis — 24% (v3) at IoU 0.5, with some classes
-(`unusual_object`, 24 instances) never detected — while precision (40%) and box tightness (mean
-IoU 0.67 on matches) are strong; more training data, naive or targeted, did not move this (see
-Task 3 and the v4 finding above for why). The training distribution is narrow: nuScenes
-v1.0-trainval is predominantly daytime, and targeted adverse-weather mining did not close the
-gap. v3 shows mild overfitting (eval loss 0.66 vs train loss 0.40); v4 trained clean (3 epochs,
-eval_loss 0.694) but still regressed the mined buckets. Parse failures are rare (98.7% v3 / 97.4%
-v4). This is research / offline-evaluation work — not for real-time or safety-critical control.
-
-This is a portfolio project optimized for lifecycle rigor over a headline accuracy number: it
-surfaces and diagnoses real failures (the coordinate-convention bug; naive and targeted data
-scaling both failing to lift recall; the box-provenance confound and its follow-up) rather than
-reporting a single cherry-picked result.
-
----
-
-## Pipeline stages
-
-Data curation projects nuScenes 3D ground-truth boxes into the 2D camera frame (near-plane
-frustum clipped) and scores each frame across 6 composite rarity signals for mining; a validation
-gate blocks the label set from training on any sign of collapse (repeated boxes, oversized boxes,
-schema violations) before it reaches the trainer. Training is LoRA SFT on Qwen2.5-VL-3B-Instruct
-(rank 32, alpha 64, targets `q/k/v/o/up/down_proj`) with prefix-masked labels, bf16, on a single
-A100. Evaluation runs a 4-level framework — grounding (IoU + Hungarian matching), reasoning
-(LLM-as-judge), production readiness, and stratified robustness — and includes an all-zero-IoU
-abort that refuses to report boxless or garbage predictions rather than silently passing them
-through. A regression gate (`scripts/run_regression_gate.py`) compares a new candidate against
-the current production model on the weak buckets specifically (rain, night+tiny, tiny) and blocks
-promotion on any regression, wired into CI. `src/drivesense/monitoring/drift.py` is a
-population-stability check for production traffic — a scaffold ready to plug into a serving
-pipeline, not a deployed monitor (see `docs/OBSERVABILITY.md`).
-
----
-
-## Quick start (local dev, CPU)
+Local development does not require a GPU:
 
 ```bash
 git clone https://github.com/jayanth922/DriveSense-VLM.git
 cd DriveSense-VLM
-pip install pyyaml pillow numpy scipy tqdm      # core, CPU-safe
-python -m pytest tests/ -v                       # test suite, no GPU or downloads
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install pyyaml pillow numpy scipy tqdm pytest
+python scripts/run_sanity_check.py
+python -m pytest -q tests
 ```
 
-A full training + eval run needs a GPU (Colab or RunPod) — see the runbooks under `notebooks/`
-or `deconfound/RUNBOOK.md` for the Task 3 ablation specifically.
+Training and full inference require a CUDA GPU. The notebooks under `notebooks/` and the Task 3
+runbook under `experiments/task3_deconfound/` contain the GPU workflows.
 
----
+## Repository layout
 
-## Repo map
-
-| Path | What it is |
+| Path | Purpose |
 |---|---|
-| `README.md` | This file — status, results, what's left |
-| `docs/TASK3_DECONFOUND.md` | Task 3 box-provenance ablation: full write-up, per-condition table, limitations |
-| `deconfound/` | Task 3 pipeline — reconstruction, arm assembly, training config, comparison, `RUNBOOK.md` |
-| `docs/FLYWHEEL.md` | The mine → label → gate → train → eval → gate loop, stage by stage |
-| `docs/FLYWHEEL_V4_FINDINGS.md` | The v3→v4 turn in full: what was mined, what regressed, why |
-| `docs/DEBUGGING_POSTMORTEM.md` | Failures diagnosed: the coordinate bug, naive scaling, targeted scaling |
-| `docs/INFERENCE_OPTIMIZATION.md` | Bottleneck-driven inference study; §7 is the measured T4 results |
-| `docs/MODEL_CARD.md` / `hf_model_card/` | Model cards (repo-facing and HuggingFace-facing) |
-| `results/metrics_registry.json` | Source of truth for v2/v3/v4 metrics and the gate policy |
-| `results/mlops_report.md` | Generated v2→v3→v4 comparison and gate verdict |
-| `mlops_report.py` | Builds the report; `--gate` exits non-zero on regression (used in CI) |
-| `scripts/inference_benchmark.py` | Reproduces §7 (batching, percentiles, equivalence gate) |
-| `scripts/v4/` | The v4 flywheel turn's pipeline (mine → label → build → finalize), reused by Task 3 |
-| `scripts/` | Pipeline CLIs: filter, annotate, train, evaluate, mine, gate, ship |
-| `src/drivesense/` | Library: `data/`, `training/`, `eval/`, `inference/`, `monitoring/` |
-| `src/drivesense/data/spark_pipeline.py` | Distributed PySpark rarity-scoring + analytics ETL |
-| `docs/` | Deep dives: observability, closed-loop mining, TensorRT runbook |
-| `configs/*.yaml` | All hyperparameters and paths — never hardcoded in source |
-| `tests/` | CPU-only, mock-backed test suite — no GPU, downloads, or API keys |
-| `huggingface_space/` | Gradio app deployed to HuggingFace Spaces (T4, NF4) |
-| `notebooks/` | Colab execution notebooks (data → training → optimization → eval) |
-| `.github/workflows/ci.yml` | Tests, mock pipeline smoke, and the regression gate |
+| `src/drivesense/` | Reusable data, training, inference, evaluation, and monitoring code |
+| `scripts/` | Command-line entry points for each pipeline stage |
+| `configs/` | Model, data, training, inference, and evaluation settings |
+| `tests/` | CPU-safe unit and integration tests |
+| `notebooks/` | Colab workflows for data, training, optimization, and evaluation |
+| `experiments/task3_deconfound/` | Controlled FM-box versus GT-box experiment |
+| `deploy/huggingface/` | Hugging Face model card and Space application |
+| `results/` | Versioned metrics and compact evaluation artifacts |
+| `docs/` | Design notes, runbooks, findings, and model documentation |
 
----
+Useful starting points:
 
-## What's left
+- [`docs/FLYWHEEL.md`](docs/FLYWHEEL.md): data and training loop;
+- [`docs/DEBUGGING_POSTMORTEM.md`](docs/DEBUGGING_POSTMORTEM.md): failures and fixes;
+- [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md): regression and drift monitoring;
+- [`docs/CLOSED_LOOP.md`](docs/CLOSED_LOOP.md): failure-driven data selection;
+- [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md): model use and limitations;
+- [`docs/TENSORRT_RUNBOOK.md`](docs/TENSORRT_RUNBOOK.md): ViT export investigation.
 
-Three items from earlier open threads are done: a T4 re-run settled the three §7 measurement
-caveats (see `INFERENCE_OPTIMIZATION.md` §7), the TensorRT ViT runbook executed on a Kaggle T4
-with a negative result (`torch.export` fails on Qwen2.5-VL's data-dependent window attention, so
-TensorRT isn't viable for this ViT; the deployed latency lever stays fp16 + prompt-lookup, see
-`docs/TENSORRT_RUNBOOK.md` §6), and Task 3's box-provenance A/B ran end to end on an H100 — see
-the result table above and [`TASK3_DECONFOUND.md`](docs/TASK3_DECONFOUND.md).
+## Current status and next work
 
-Future work, none blocking:
+The implemented pipeline is complete. The remaining work is experimental rather than required for
+running the repository:
 
-- Scale Task 3 back up — base 2,652 → the original 7,228 target, and test 402 → the full fixed
-  1,041 frames — to check the FM-vs-GT delta holds at full scale, not just the reduced
-  reconstruction it was measured on.
-- Multi-seed Task 3 re-runs for confidence intervals; the current result is a single run per arm.
-- An optional v4b ablation: retrain dropping the 216 `no_hazard` negatives introduced in v4, to
-  test whether they were separately suppressing recall alongside the box-provenance effect Task 3
-  measured.
+- repeat the box-provenance experiment at the original 7,228-frame scale and on the full
+  1,041-frame test set;
+- run multiple seeds for confidence intervals;
+- test a v4b training set without the 216 `no_hazard` examples added in v4;
+- evaluate vLLM on a compatible GPU image. The T4 environment used for this study could not run it.
 
----
+## Limitations
 
-## Tech stack
+- v3 recall is 24% at IoU 0.5; tiny, distant, rainy, and nighttime hazards remain difficult.
+- nuScenes trainval is weighted toward daytime driving and does not represent every deployment
+  environment.
+- The reasoning judge is another language model and should not be treated as a human safety review.
+- End-to-end T4 latency is measured in seconds per image, so this is not a real-time driving stack.
+- The system is a research prototype. It must not be used for vehicle control or other
+  safety-critical decisions.
 
-| Component | Technology | Notes |
-|---|---|---|
-| Base model | Qwen2.5-VL-3B-Instruct | Apache 2.0 |
-| Fine-tuning | LoRA via PEFT | rank 32, alpha 64 |
-| Training | HuggingFace Transformers | LoRA SFT, prefix masking, bf16 |
-| Demo quantization | bitsandbytes NF4 (4-bit) | HF Spaces T4 demo |
-| Data | nuScenes v1.0-trainval | rare-hazard filtered, GT-projected boxes (v2/v3/base); see Task 3 for the FM-emitted exception |
-| Distributed ETL | PySpark | 6-signal rarity scoring + analytics, explicit schemas |
-| Annotation | Anthropic Claude | describe-only (severity/reasoning/action); FM-emitted `bbox_2d` only for v4's targeted addition and Task 3's FM arm |
-| Tracking | Weights & Biases | training metrics |
-| Lint / format | Ruff + Black | line-length 100 |
-| Testing | pytest | CPU-only, mock-backed |
+## Technology
 
----
-
-## Testing
-
-```bash
-python -m pytest tests/ -v
-```
-
-The suite (587 tests, 583 pass / 4 skip without a GPU) is CPU-only and mock-backed — no GPU,
-model downloads, or API keys required.
-
----
+- Qwen2.5-VL-3B-Instruct
+- PyTorch, Transformers, PEFT, and bitsandbytes
+- nuScenes v1.0-trainval and PySpark
+- Anthropic Claude for description generation and reasoning evaluation
+- pytest, GitHub Actions, and Weights & Biases
+- Gradio and Hugging Face Spaces
 
 ## Acknowledgments
 
-- Qwen Team (Alibaba) for Qwen2.5-VL-3B-Instruct (Apache 2.0)
-- nuScenes / Motional for the nuScenes autonomous-driving dataset
-- HuggingFace for Transformers, PEFT, and Spaces
-- Anthropic for the Claude API used in describe-only annotation and LLM-as-judge evaluation
+This project uses Qwen2.5-VL, nuScenes, Hugging Face Transformers and PEFT, and the Anthropic API.
+See the linked projects and dataset terms for their licenses and usage requirements.

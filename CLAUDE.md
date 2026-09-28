@@ -6,13 +6,12 @@ SFT-optimized VLM for AV rare hazard detection using Qwen2.5-VL-3B.
 
 ## Current Phase
 
-ALL PHASES COMPLETE ✅ — all six pillars pushed to `main` (flywheel, VLM fine-tune,
-perception/L4, inference study, MLOps gate + CI, eval rigor). Repo ~99% complete.
+All implemented phases are complete: data flywheel, VLM fine-tuning, grounding and robustness
+evaluation, inference profiling, MLOps gates, and CI.
 
-**Canonical sources of truth:** detection metrics → `results/metrics_registry.json`;
-inference metrics → `INFERENCE_OPTIMIZATION.md` §7 (reproducible via `scripts/inference_benchmark.py`).
-**Remaining work** is one Colab GPU run — see the README's "What's left" section (the single
-canonical list; do not duplicate it elsewhere).
+Canonical detection metrics are in `results/metrics_registry.json`. Inference measurements are in
+`docs/INFERENCE_OPTIMIZATION.md` and can be reproduced with
+`scripts/inference_benchmark.py`. The README contains the current experimental follow-up list.
 
 ## Architecture Decisions
 
@@ -57,8 +56,8 @@ canonical list; do not duplicate it elsewhere).
 - **Failure stratification CLI**: `scripts/analyze_failure_stratification.py` — takes predictions.jsonl + enriched GT, no model/GPU; finds which size tier/condition grounds worst
 - **Mining targets lib**: `src/drivesense/data/mining_targets.py` — proxied_size_tier (distance_to_ego bands, NOT measured), infer_weather/infer_time_of_day (scene_description keywords, mirrors scene_meta()), score_frame, select_targets (drop-in shopping-list schema); `location` dimension is NOT derivable from metadata.jsonl — dropped with a warning
 - **Mining targets CLI**: `scripts/select_mining_targets.py` — takes the stratification report + global metadata.jsonl, writes a new mining_shoppinglist.jsonl targeting the worst bucket; run the miner with `--no-rebuild-list` after, or the implicit-rebuild default overwrites it
-- **Closed-loop docs**: `docs/CLOSED_LOOP.md` — analyze → select → mine → label → gate → train → eval design; honestly notes only the tooling was built/validated this session, not a full extra cycle
-- **TensorRT runbook**: `docs/TENSORRT_RUNBOOK.md` — Colab A100 execution plan for `tensorrt_vit.py` (already ViT-only scoped, not full-model); no real GPU TensorRT attempt is evidenced in repo history — the only prior "failure" artifact was a test-fixture leak (`tests/test_tensorrt.py::test_torch_compile_sentinel_path` wrote to the real `outputs/tensorrt/` instead of `tmp_path`; fixed). Decision points at each stage; honest fallback framing if ONNX/TRT export fails
+- **Closed-loop docs**: `docs/CLOSED_LOOP.md` — analyze → select → mine → label → gate → train → eval design; the failure-to-shopping-list path is implemented and tested
+- **TensorRT investigation**: `docs/TENSORRT_RUNBOOK.md` — real Kaggle T4 ViT-only export attempt; ONNX/TensorRT failed on Qwen2.5-VL's data-dependent window attention, while `torch.compile` measured 1.03×
 - **Benchmark output**: `outputs/benchmarks/` — per-run JSON benchmark results
 - **TensorRT output**: `outputs/tensorrt/` — vit.onnx, vit.engine, vit_benchmark.json, optimization_report.txt, fallback_info.json
 - **LoRA adapter output**: `outputs/training/lora_adapter/` — saved LoRA weights + processor
@@ -76,7 +75,7 @@ canonical list; do not duplicate it elsewhere).
 - **Streaming miner**: `src/drivesense/data/streaming_miner.py` — bounded-storage nuScenes blob image fetch (shopping list, stratified sample, streaming tar extract, resume manifest, auth resolution)
 - **Streaming miner CLI**: `scripts/run_streaming_miner.py` — `--dry-run`, `--build-list-only`, `--blob-dir`, `--blob-urls-file`; one blob at a time under a disk cap. Config in `configs/data.yaml` (`mining:`)
 - **Miner outputs**: `outputs/data/mining_shoppinglist.jsonl`, `mining_manifest.json` (resume), `mining_report.json`
-- **Unified dataset**: `src/drivesense/data/dataset.py` — `UnifiedDatasetBuilder` (nuScenes-only; the DADA-2000 second source was removed) + `DriveSenseDataset`
+- **Unified dataset**: `src/drivesense/data/dataset.py` — nuScenes-only `UnifiedDatasetBuilder` + `DriveSenseDataset`
 - **Unified build CLI**: `scripts/run_build_unified_dataset.py` — Phase 1b unified dataset builder, used by `notebooks/00_data_pipeline.ipynb` and `05_quick_start.ipynb`
 - **Unified output**: `outputs/data/unified/` — per-split manifest JSONL files
 - **Filtering script**: `scripts/run_nuscenes_filter.py` — Phase 1a pipeline CLI
@@ -185,7 +184,7 @@ black src/
 | 0.5a | Project Scaffolding | ✅ Complete |
 | 1a | nuScenes rarity filtering + frame extraction | ✅ Complete |
 | 1a-spark | PySpark distributed rarity scoring + analytics | ✅ Complete |
-| 1b | Unified dataset builder | ✅ Complete, nuScenes-only — the DADA-2000 second source was scaffolding never used past Phase 1 and has been removed |
+| 1b | Unified dataset builder | ✅ Complete, nuScenes-only |
 | 1c | LLM counterfactual annotation pipeline | ✅ Complete |
 | 2a | LoRA SFT training | ✅ Complete |
 | 2b | Mid-training evaluation integration | ✅ Complete |
@@ -222,7 +221,7 @@ black src/
       "label": "pedestrian_in_path | vehicle_cut_in | debris | ...",
       "bbox_2d": [x1, y1, x2, y2],
       "severity": 1,
-      "reasoning": "Chain-of-thought explanation...",
+      "reasoning": "Short explanation of the hazard...",
       "action": "emergency_brake | yield | lane_change | maintain_speed"
     }
   ],
@@ -252,9 +251,8 @@ black src/
 - Always call `scorer.stop()` (in a `finally` block) to release the SparkSession.
 - The v2+ SFT pipeline is nuScenes-only (see `scripts/regenerate_annotations_v2_colab.py`).
   `UnifiedDatasetBuilder` (`dataset.py`, driven by `scripts/run_build_unified_dataset.py`) still
-  builds the Phase-1b nuScenes split manifest used by `00_data_pipeline.ipynb` /
-  `05_quick_start.ipynb`; its DADA-2000 second-source loader (`dada_loader.py`,
-  `run_dada_extraction.py`) was scaffolding never used past Phase 1 and has been removed.
+  builds the Phase-1b nuScenes split manifest used by `00_data_pipeline.ipynb` and
+  `05_quick_start.ipynb`.
 - `resize_with_letterbox(image, target_size)` returns `(image, params_dict)` with keys `scale`, `pad_x`, `pad_y`, `new_w`, `new_h` for reverse bbox projection.
 - **Annotation pipeline** (`annotation.py`): `AnnotationPromptBuilder` loads templates from
   `prompts/*.txt` and `counterfactual_scenarios.json`; `AnnotationValidator` validates + fixes
