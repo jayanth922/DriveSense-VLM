@@ -4,8 +4,9 @@
 [![Model: Qwen2.5-VL-3B](https://img.shields.io/badge/model-Qwen2.5--VL--3B-orange)](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 
-DriveSense-VLM is an end-to-end project for detecting rare road hazards in dashcam images. It
-fine-tunes Qwen2.5-VL-3B-Instruct with LoRA and returns a structured report for each frame:
+DriveSense-VLM is an end-to-end multimodal ML system for detecting rare road hazards in dashcam
+images. It fine-tunes Qwen2.5-VL-3B-Instruct with LoRA and returns a grounded JSON report for each
+frame:
 
 - hazard class;
 - 2D bounding box;
@@ -13,26 +14,44 @@ fine-tunes Qwen2.5-VL-3B-Instruct with LoRA and returns a structured report for 
 - short explanation;
 - recommended driving action.
 
-The repository covers the full model lifecycle: distributed data mining, annotation, validation,
-training, evaluation, regression gating, inference profiling, monitoring, and deployment.
+The work spans the full model lifecycle: distributed data mining, annotation, validation,
+fine-tuning, evaluation, regression gating, inference profiling, monitoring, and deployment.
 
-## Project summary
+## 30-second overview
 
-The data pipeline starts with nuScenes keyframes. PySpark and the streaming miner identify rare
-scenes without requiring the full image archive to fit on disk. For the main v2/v3 dataset,
-nuScenes 3D annotations are projected into the front camera to create 2D boxes. Claude supplies
-the description, severity, and action for those boxes; it does not localize them.
+This repository demonstrates more than model training:
 
-The model is trained with LoRA SFT and evaluated at four levels:
+- **Data engineering:** PySpark scores 34,149 nuScenes keyframes for rarity. A resumable miner
+  streams ten image archives (about 250 GB in total) one at a time and extracts only selected
+  `CAM_FRONT` frames, so the full archive never has to fit on disk.
+- **Label quality:** nuScenes 3D ground-truth cuboids are projected into 2D with near-plane
+  clipping. Claude supplies severity, reasoning, and driving actions, but not the boxes used to
+  train v2/v3. Schema and box-diversity gates stop malformed or collapsed labels.
+- **Model and evaluation:** Qwen2.5-VL-3B is fine-tuned with LoRA and measured across grounding,
+  classification, reasoning, operating conditions, and inference behavior on a fixed test set.
+- **MLOps:** every candidate is compared with the selected model. The larger v4 run performed
+  worse, so the regression gate blocked it instead of promoting it on training-set size alone.
 
-1. box grounding and hazard classification;
-2. reasoning quality;
-3. inference and production metrics;
-4. performance by weather, time of day, and object size.
+```text
+mine -> label -> validate -> train -> evaluate -> regression gate -> promote or block
+```
 
-A regression gate compares each candidate with the current model. The v4 candidate failed that
-gate, so v3 remains the selected checkpoint. This negative result is retained because it shows
-that adding targeted data can still reduce performance when label provenance changes.
+### Key measured outcomes
+
+- **Selected v3 model:** 0.30 F1, 0.67 mean IoU, 0.94 class accuracy, and 98.7% parse rate on a
+  fixed 1,041-frame nuScenes test set.
+- **Useful negative result:** v4 added 1,442 targeted adverse-condition frames but fell to 0.25
+  F1; the automated gate correctly kept v3 in place.
+- **Inference optimization:** prompt-lookup decoding improved T4 decode throughput by 20% and
+  reduced median end-to-end latency by 16% with exact output match.
+- **Provenance experiment:** GT-projected boxes outperformed foundation-model-emitted boxes in a
+  controlled reconstruction (0.222 versus 0.128 F1), isolating localization quality as a major
+  failure source.
+
+All headline detection values are versioned in
+[`results/metrics_registry.json`](results/metrics_registry.json). Inference measurements and
+reproduction details are in
+[`docs/INFERENCE_OPTIMIZATION.md`](docs/INFERENCE_OPTIMIZATION.md).
 
 ## Results
 
